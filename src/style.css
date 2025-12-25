@@ -1,0 +1,154 @@
+@font-face {
+  font-family: 'Pixel';
+  src: url('/assets/font/pixel.ttf') format('truetype');
+}
+
+:root {
+  font-family: 'Pixel', system-ui, Avenir, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: none;
+  -moz-osx-font-smoothing: grayscale;
+  font-smooth: never;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  background: linear-gradient(to bottom, #b0d5df, #dfecd5);
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+#app {
+  width: 800px;
+  height: 600px;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(to bottom, #b0d5df, #dfecd5);
+  box-shadow: 0 0 20px rgba(0,0,0,0.2);
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+img {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
+.cloud {
+  position: absolute;
+  pointer-events: none;
+}
+
+.grass-rect {
+  position: absolute;
+  z-index: 20;
+}
+
+#title {
+  position: absolute;
+  top: 50px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 400px;
+  height: 200px;
+  z-index: 30;
+}
+
+#start-btn {
+  position: absolute;
+  top: 310px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: none;
+  border: none;
+  color: #55371d;
+  font-size: 30px;
+  font-weight: normal;
+  cursor: pointer;
+  z-index: 40;
+  font-family: 'Pixel';
+  transition: opacity 0.2s ease-in-out;
+}
+
+.mode-btn {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  background: none;
+  border: none;
+  color: #55371d;
+  font-size: 30px;
+  font-weight: normal;
+  cursor: pointer;
+  z-index: 40;
+  font-family: 'Pixel';
+  transition: opacity 0.2s ease-in-out;
+  opacity: 0;
+}
+
+.mode-btn.visible {
+  opacity: 1;
+}
+
+.icon-btn {
+  position: absolute;
+  top: 35px;
+  width: 30px;
+  height: 30px;
+  background-size: contain;
+  background-repeat: no-repeat;
+  border: none;
+  background-color: transparent;
+  cursor: pointer;
+  z-index: 40;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+#login-btn {
+  right: 150px;
+  background-image: url('/assets/images/login.png');
+}
+
+#login-btn:hover {
+  background-image: url('/assets/images/login_clicked.png');
+}
+
+#settings-btn {
+  right: 80px;
+  background-image: url('/assets/images/settings.png');
+}
+
+#settings-btn:hover {
+  background-image: url('/assets/images/settings_clicked.png');
+}
+
+#theme-btn {
+  right: 220px;
+  background-image: url('/assets/images/theme.png');
+}
+
+#theme-btn:hover {
+  background-image: url('/assets/images/theme_clicked.png');
+}
+
+#box {
+  position: absolute;
+  width: 50px;
+  height: 50px;
+  cursor: grab;
+  z-index: 15;
+}
+
+#cat {
+  position: absolute;
+  width: 50px;
+  height: 50px;
+  z-index: 14;
+}
