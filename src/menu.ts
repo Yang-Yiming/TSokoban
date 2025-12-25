@@ -146,23 +146,185 @@ export class Menu {
       this.handleStartClick(startBtn);
     });
 
+    this.createIconBtn('login-btn', 'login', 150, () => this.showLoginDialog());
+    this.createIconBtn('settings-btn', 'settings', 80, () => this.showSettingsDialog());
+    this.createIconBtn('theme-btn', 'theme', 220, () => this.showThemeDialog());
+  }
+
+  private createIconBtn(id: string, name: string, right: number, onClick: () => void) {
+    const btn = document.createElement('button');
+    btn.className = 'icon-btn';
+    btn.id = id;
+    btn.style.right = `${right}px`;
+    
+    const img = document.createElement('img');
+    img.src = `/assets/images/${name}.png`;
+    img.style.width = '30px';
+    img.style.height = '30px';
+    img.draggable = false;
+    
+    btn.appendChild(img);
+    this.app.appendChild(btn);
+
+    btn.addEventListener('mouseenter', () => {
+      img.src = `/assets/images/${name}_clicked.png`;
+    });
+    btn.addEventListener('mouseleave', () => {
+      img.src = `/assets/images/${name}.png`;
+    });
+    btn.addEventListener('click', onClick);
+  }
+
+  private createDialog(title: string) {
+    const shade = document.createElement('div');
+    shade.className = 'dialog-shade';
+    
+    const paper = document.createElement('div');
+    paper.className = 'dialog-paper';
+    
+    const titleText = document.createElement('div');
+    titleText.className = 'dialog-title';
+    titleText.innerText = title;
+    paper.appendChild(titleText);
+    
+    const closeBtn = document.createElement('button');
+    closeBtn.className = 'dialog-close';
+    const closeImg = document.createElement('img');
+    closeImg.src = '/assets/images/X.png';
+    closeBtn.appendChild(closeImg);
+    closeBtn.onclick = () => {
+      shade.remove();
+    };
+    paper.appendChild(closeBtn);
+    
+    shade.appendChild(paper);
+    this.app.appendChild(shade);
+    
+    return { shade, paper };
+  }
+
+  private showLoginDialog() {
+    const { paper } = this.createDialog('Login');
+    
+    const vbox = document.createElement('div');
+    vbox.className = 'login-vbox';
+    
+    const usernameGroup = this.createInputGroup('Username', 'text');
+    const passwordGroup = this.createInputGroup('Password', 'password');
+    
+    const buttons = document.createElement('div');
+    buttons.className = 'login-buttons';
+    
     const loginBtn = document.createElement('button');
-    loginBtn.className = 'icon-btn';
-    loginBtn.id = 'login-btn';
-    this.app.appendChild(loginBtn);
-    this.addJumpyHover(loginBtn, false);
+    loginBtn.innerText = 'Login';
+    const registerBtn = document.createElement('button');
+    registerBtn.innerText = 'Register';
+    
+    buttons.appendChild(loginBtn);
+    buttons.appendChild(registerBtn);
+    
+    vbox.appendChild(usernameGroup);
+    vbox.appendChild(passwordGroup);
+    vbox.appendChild(buttons);
+    
+    paper.appendChild(vbox);
+  }
 
-    const settingsBtn = document.createElement('button');
-    settingsBtn.className = 'icon-btn';
-    settingsBtn.id = 'settings-btn';
-    this.app.appendChild(settingsBtn);
-    this.addJumpyHover(settingsBtn, false);
+  private createInputGroup(labelText: string, type: string) {
+    const group = document.createElement('div');
+    group.className = 'input-group';
+    const label = document.createElement('label');
+    label.innerText = labelText;
+    const input = document.createElement('input');
+    input.type = type;
+    group.appendChild(label);
+    group.appendChild(input);
+    return group;
+  }
 
-    const themeBtn = document.createElement('button');
-    themeBtn.className = 'icon-btn';
-    themeBtn.id = 'theme-btn';
-    this.app.appendChild(themeBtn);
-    this.addJumpyHover(themeBtn, false);
+  private showSettingsDialog() {
+    const { paper } = this.createDialog('Settings');
+    
+    const vbox = document.createElement('div');
+    vbox.className = 'settings-vbox';
+    
+    vbox.appendChild(this.createSettingsRow('MovingAnimTime', 'range', 0, 100, 50));
+    vbox.appendChild(this.createSettingsRow('Volume', 'range', 0, 100, 50));
+    
+    const aStarRow = document.createElement('div');
+    aStarRow.className = 'settings-row';
+    const aStarLabel = document.createElement('label');
+    aStarLabel.innerText = '采用更智能的无解判断';
+    const aStarCheck = document.createElement('input');
+    aStarCheck.type = 'checkbox';
+    const aStarText = document.createElement('span');
+    aStarText.innerText = '启用A*';
+    aStarRow.appendChild(aStarLabel);
+    const checkContainer = document.createElement('div');
+    checkContainer.appendChild(aStarCheck);
+    checkContainer.appendChild(aStarText);
+    aStarRow.appendChild(checkContainer);
+    vbox.appendChild(aStarRow);
+
+    const seedRow = document.createElement('div');
+    seedRow.className = 'settings-row';
+    const seedLabel = document.createElement('label');
+    seedLabel.innerText = '设定地图生成种子';
+    const seedInput = document.createElement('input');
+    seedInput.type = 'text';
+    seedInput.value = '53';
+    seedRow.appendChild(seedLabel);
+    seedRow.appendChild(seedInput);
+    vbox.appendChild(seedRow);
+    
+    paper.appendChild(vbox);
+  }
+
+  private createSettingsRow(labelText: string, type: string, min?: number, max?: number, value?: any) {
+    const row = document.createElement('div');
+    row.className = 'settings-row';
+    const label = document.createElement('label');
+    label.innerText = labelText;
+    const input = document.createElement('input');
+    input.type = type;
+    if (min !== undefined) input.min = min.toString();
+    if (max !== undefined) input.max = max.toString();
+    if (value !== undefined) input.value = value.toString();
+    row.appendChild(label);
+    row.appendChild(input);
+    return row;
+  }
+
+  private showThemeDialog() {
+    const { paper } = this.createDialog('主题');
+    
+    const list = document.createElement('div');
+    list.className = 'theme-list';
+    
+    const themes = [
+      { name: '苔藓绿', color: 'rgb(124, 153, 32)' },
+      { name: '春梅红', color: 'rgb(241, 147, 156)' },
+      { name: '远山紫', color: 'rgb(204, 204, 214)' },
+      { name: '深灰蓝', color: 'rgb(68, 78, 94)' },
+      { name: 'yym 色', color: 'rgb(124, 153, 32)' },
+      { name: 'gyx 色', color: 'rgb(241, 147, 156)' }
+    ];
+    
+    themes.forEach(theme => {
+      const option = document.createElement('label');
+      option.className = 'theme-option';
+      option.style.color = theme.color;
+      
+      const radio = document.createElement('input');
+      radio.type = 'radio';
+      radio.name = 'theme';
+      
+      option.appendChild(radio);
+      option.appendChild(document.createTextNode(theme.name));
+      list.appendChild(option);
+    });
+    
+    paper.appendChild(list);
   }
 
   private addJumpyHover(btn: HTMLElement, isCentered: boolean) {
