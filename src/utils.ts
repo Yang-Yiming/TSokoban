@@ -10,7 +10,7 @@ export function generatePseudoRandom(x: number, y: number, z: number): number {
 
 export function myRand(a: number, b: number, c: number, l: number, r: number): number {
   const randomNumber = generatePseudoRandom(a, b, c);
-  return (Math.abs(randomNumber) % (r - l + 1)) + l;
+  return (randomNumber % (r - l + 1)) + l;
 }
 
 export function randColor(dx: number, dy: number): string {

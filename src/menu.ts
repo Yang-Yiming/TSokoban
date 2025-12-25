@@ -1,4 +1,5 @@
 import { myRand, randColor } from './utils';
+import { GameController, MAP_DATA } from './game';
 
 export class Menu {
   private app: HTMLElement;
@@ -145,6 +146,19 @@ export class Menu {
     startBtn.addEventListener('click', () => {
       this.handleStartClick(startBtn);
     });
+
+    // Add Continue button if save exists
+    if (localStorage.getItem('sokoban_save')) {
+      const continueBtn = document.createElement('button');
+      continueBtn.id = 'continue-btn';
+      continueBtn.innerText = '继续';
+      continueBtn.style.top = '420px';
+      this.app.appendChild(continueBtn);
+      this.addJumpyHover(continueBtn, true);
+      continueBtn.addEventListener('click', () => {
+        this.startGame(-1); // -1 means load save
+      });
+    }
 
     this.createIconBtn('login-btn', 'login', 150, () => this.showLoginDialog());
     this.createIconBtn('settings-btn', 'settings', 80, () => this.showSettingsDialog());
@@ -365,7 +379,7 @@ export class Menu {
       { text: '双人模式', top: 370 }
     ];
 
-    modes.forEach((mode, index) => {
+    modes.forEach((mode) => {
       const btn = document.createElement('button');
       btn.className = 'mode-btn';
       btn.innerText = mode.text;
@@ -379,10 +393,70 @@ export class Menu {
       });
 
       btn.addEventListener('click', () => {
-        console.log(`Selected mode: ${mode.text}`);
-        // Here we would transition to the game level
+        if (mode.text === '经典模式') {
+          this.showLevelSelect();
+        } else {
+          console.log(`Selected mode: ${mode.text}`);
+        }
       });
     });
+  }
+
+  private showLevelSelect() {
+    const { shade, paper } = this.createDialog('选择关卡');
+    const grid = document.createElement('div');
+    grid.className = 'level-grid';
+
+    MAP_DATA.forEach((_, index) => {
+      const item = document.createElement('div');
+      item.className = 'level-item';
+      item.innerText = `${index + 1}`;
+      item.onclick = () => {
+        shade.remove();
+        this.startGame(index);
+      };
+      grid.appendChild(item);
+    });
+
+    paper.appendChild(grid);
+  }
+
+  private startGame(levelIndex: number) {
+    // Hide menu elements
+    Array.from(this.app.children).forEach(child => {
+      if (child instanceof HTMLElement && child.id !== 'game-container') {
+        child.style.display = 'none';
+      }
+    });
+
+    const gameContainer = document.createElement('div');
+    gameContainer.id = 'game-container';
+    gameContainer.style.position = 'absolute';
+    gameContainer.style.top = '0';
+    gameContainer.style.left = '0';
+    gameContainer.style.width = '100%';
+    gameContainer.style.height = '100%';
+    gameContainer.style.zIndex = '200'; // Higher than dialogs
+    this.app.appendChild(gameContainer);
+
+    const controller = new GameController(gameContainer, () => {
+      controller.destroy();
+      gameContainer.remove();
+      // Show menu elements again
+      Array.from(this.app.children).forEach(child => {
+        if (child instanceof HTMLElement) {
+          child.style.display = '';
+        }
+      });
+    });
+
+    if (levelIndex === -1) {
+      if (!controller.loadSavedGame()) {
+        controller.loadLevel(0);
+      }
+    } else {
+      controller.loadLevel(levelIndex);
+    }
   }
 
   private startAnimation() {
