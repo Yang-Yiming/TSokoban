@@ -36,6 +36,11 @@ class Node {
     }
 }
 
+export interface SolverResult {
+    status: 'solved' | 'unsolvable' | 'limit-reached';
+    path?: string;
+}
+
 export class AStarSolver {
     private walls: Set<string> = new Set();
     private goals: Set<string> = new Set();
@@ -94,7 +99,7 @@ export class AStarSolver {
         return false;
     }
 
-    solve(maxNodes: number = 10000): string | null {
+    solve(maxNodes: number = 10000): SolverResult {
         const startPlayer = this.initialMap.getPlayerPosition()!;
         const startBoxes = this.initialMap.getBoxes().map(b => b.toString()).sort();
         
@@ -108,9 +113,17 @@ export class AStarSolver {
         const closedSet: Set<string> = new Set();
         let nodesCount = 0;
 
-        while (openList.length > 0 && nodesCount < maxNodes) {
-            openList.sort((a, b) => a.f - b.f);
-            const current = openList.shift()!;
+        while (openList.length > 0) {
+            if (nodesCount >= maxNodes) {
+                return { status: 'limit-reached' };
+            }
+
+            // Simple priority queue: find min f
+            let minIdx = 0;
+            for (let i = 1; i < openList.length; i++) {
+                if (openList[i].f < openList[minIdx].f) minIdx = i;
+            }
+            const current = openList.splice(minIdx, 1)[0];
             nodesCount++;
 
             const key = current.getStateKey();
@@ -119,7 +132,7 @@ export class AStarSolver {
 
             // Check win
             if (current.state.boxes.every(b => this.goals.has(b))) {
-                return this.reconstructPath(current);
+                return { status: 'solved', path: this.reconstructPath(current) };
             }
 
             // Try moves
@@ -171,7 +184,7 @@ export class AStarSolver {
             }
         }
 
-        return null;
+        return { status: 'unsolvable' };
     }
 
     private reconstructPath(node: Node): string {

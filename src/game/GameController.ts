@@ -253,10 +253,10 @@ export class GameController {
         if (this.itemCounts.hint <= 0 || !this.currentMap || this.isGameOver || (now - this.lastMoveTime < this.moveAnimDuration)) return;
         
         const solver = new AStarSolver(this.currentMap);
-        const solution = solver.solve(5000);
+        const result = solver.solve(5000);
         
-        if (solution && solution.length > 0) {
-            const nextMove = solution[0];
+        if (result.status === 'solved' && result.path && result.path.length > 0) {
+            const nextMove = result.path[0];
             let dx = 0, dy = 0;
             let orientation = 2;
 
@@ -350,8 +350,8 @@ export class GameController {
         
         // Calculate step limit using A*
         const solver = new AStarSolver(this.currentMap);
-        const solution = solver.solve(10000);
-        this.stepLimit = (solution ? solution.length : 20) + 15;
+        const result = solver.solve(10000);
+        this.stepLimit = (result.status === 'solved' && result.path ? result.path.length : 20) + 15;
 
         this.scene.setInitialAnchor(this.currentMap);
         this.updateUI();
@@ -443,11 +443,8 @@ export class GameController {
         if (settingsManager.currentSettings.useAStar) {
             const solver = new AStarSolver(this.currentMap);
             // Use a smaller node limit for real-time check to avoid lag
-            const solution = solver.solve(2000); 
-            if (solution === null) {
-                // If A* can't find a solution within 2000 nodes, 
-                // it's either unsolvable or too complex.
-                // For "smarter" judgment, we treat it as unsolvable.
+            const result = solver.solve(2000); 
+            if (result.status === 'unsolvable') {
                 return true;
             }
         }
