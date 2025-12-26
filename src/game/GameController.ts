@@ -209,7 +209,7 @@ export class GameController {
         });
         const shortcutHint = document.createElement('div');
         shortcutHint.className = 'shortcut-hint';
-        shortcutHint.innerText = 'R: 重置 ESC: 退出 Ctrl+S: 存档';
+        shortcutHint.innerText = 'R: 重置 ESC: 退出';
         directions.appendChild(shortcutHint);
         uiOverlay.appendChild(directions);
 
@@ -340,40 +340,6 @@ export class GameController {
         this.updateUI();
     }
 
-    private saveGame() {
-        if (!this.currentMap) return;
-        const saveData = {
-            levelIndex: this.currentLevelIndex,
-            stepCount: this.stepCount,
-            itemCounts: this.itemCounts
-        };
-        localStorage.setItem('sokoban_save', JSON.stringify(saveData));
-        alert('游戏已存档！');
-    }
-
-    public loadSavedGame() {
-        const saved = localStorage.getItem('sokoban_save');
-        if (saved) {
-            const data = JSON.parse(saved);
-            this.currentLevelIndex = data.levelIndex;
-            this.stepCount = data.stepCount;
-            this.itemCounts = data.itemCounts;
-            // If saved mapMatrix exists use it, otherwise fall back to original level data
-            const mapData = data.mapMatrix || MAP_DATA[this.currentLevelIndex];
-            this.currentMap = new SokobanMap(mapData);
-            
-            // Recalculate step limit
-            const solver = new AStarSolver(this.currentMap);
-            const solution = solver.solve(10000);
-            this.stepLimit = (solution ? solution.length : 20) + 15;
-
-            this.scene.setInitialAnchor(this.currentMap);
-            this.updateUI();
-            return true;
-        }
-        return false;
-    }
-
     private setupInput() {
         const keyHandler = (e: KeyboardEvent) => {
             if (!this.currentMap || this.isDestroyed || this.isGameOver) return;
@@ -395,11 +361,6 @@ export class GameController {
                     break;
                 case 'ArrowDown':
                 case 's':
-                    if (e.ctrlKey || e.metaKey) {
-                        e.preventDefault();
-                        this.saveGame();
-                        return;
-                    }
                     newOrientation = 2;
                     dx = 0; dy = 1;
                     moveResult = this.currentMap.movePlayer(dx, dy);

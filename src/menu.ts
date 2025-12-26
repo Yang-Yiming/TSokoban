@@ -147,19 +147,6 @@ export class Menu {
       this.handleStartClick(startBtn);
     });
 
-    // Add Continue button if save exists
-    if (localStorage.getItem('sokoban_save')) {
-      const continueBtn = document.createElement('button');
-      continueBtn.id = 'continue-btn';
-      continueBtn.innerText = '继续';
-      continueBtn.style.top = '420px';
-      this.app.appendChild(continueBtn);
-      this.addJumpyHover(continueBtn, true);
-      continueBtn.addEventListener('click', () => {
-        this.startGame(-1); // -1 means load save
-      });
-    }
-
     this.createIconBtn('login-btn', 'login', 150, () => this.showLoginDialog());
     this.createIconBtn('settings-btn', 'settings', 80, () => this.showSettingsDialog());
     this.createIconBtn('theme-btn', 'theme', 220, () => this.showThemeDialog());
@@ -450,13 +437,7 @@ export class Menu {
       });
     });
 
-    if (levelIndex === -1) {
-      if (!controller.loadSavedGame()) {
-        controller.loadLevel(0);
-      }
-    } else {
-      controller.loadLevel(levelIndex);
-    }
+    controller.loadLevel(levelIndex);
   }
 
   private startAnimation() {
