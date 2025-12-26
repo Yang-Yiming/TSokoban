@@ -1,5 +1,5 @@
 import { myRand, randColor } from './utils';
-import { GameController, MAP_DATA } from './game';
+import { GameController, MAP_DATA, LevelSelect } from './game';
 import { themeManager } from './theme';
 import { showThemeDialog } from './ui/themeDialog';
 import { createDialog } from './ui/dialog';
@@ -319,22 +319,25 @@ export class Menu {
   }
 
   private showLevelSelect() {
-    const { shade, paper } = createDialog(this.app, '选择关卡');
-    const grid = document.createElement('div');
-    grid.className = 'level-grid';
-
-    MAP_DATA.forEach((_, index) => {
-      const item = document.createElement('div');
-      item.className = 'level-item';
-      item.innerText = `${index + 1}`;
-      item.onclick = () => {
-        shade.remove();
-        this.startGame(index);
-      };
-      grid.appendChild(item);
+    // Hide menu elements
+    Array.from(this.app.children).forEach(child => {
+      if (child instanceof HTMLElement) {
+        child.style.display = 'none';
+      }
     });
 
-    paper.appendChild(grid);
+    const levelSelect = new LevelSelect(this.app, (levelIndex) => {
+      levelSelect.destroy();
+      this.startGame(levelIndex);
+    }, () => {
+      levelSelect.destroy();
+      // Show menu elements again
+      Array.from(this.app.children).forEach(child => {
+        if (child instanceof HTMLElement && child.id !== 'game-container') {
+          child.style.display = '';
+        }
+      });
+    });
   }
 
   private startGame(levelIndex: number) {
