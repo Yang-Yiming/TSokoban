@@ -3,6 +3,8 @@ import { GameController, MAP_DATA } from './game';
 import { themeManager } from './theme';
 import { showThemeDialog } from './ui/themeDialog';
 import { createDialog } from './ui/dialog';
+import { showSettingsDialog } from './ui/settingsDialog';
+import { settingsManager } from './settings';
 
 export class Menu {
   private app: HTMLElement;
@@ -20,6 +22,7 @@ export class Menu {
   private catA: number = 0.15;
   private isDragging: boolean = false;
   private grassElements: { el: HTMLElement, i: number, j: number }[] = [];
+  private bgm: HTMLAudioElement | null = null;
 
   constructor(appId: string) {
     this.app = document.getElementById(appId)!;
@@ -28,6 +31,21 @@ export class Menu {
     themeManager.addListener(() => {
       this.updateGrassColors();
     });
+
+    settingsManager.addListener((settings) => {
+      if (this.bgm) {
+        this.bgm.volume = settings.volume / 100;
+      }
+      // Re-render ground if seed changes
+      this.updateGround();
+    });
+  }
+
+  private updateGround() {
+    // Clear existing grass
+    this.grassElements.forEach(({ el }) => el.remove());
+    this.grassElements = [];
+    this.createGround();
   }
 
   private updateGrassColors() {
@@ -232,56 +250,7 @@ export class Menu {
   }
 
   private showSettingsDialog() {
-    const { paper } = createDialog(this.app, 'Settings');
-    
-    const vbox = document.createElement('div');
-    vbox.className = 'settings-vbox';
-    
-    vbox.appendChild(this.createSettingsRow('MovingAnimTime', 'range', 0, 100, 50));
-    vbox.appendChild(this.createSettingsRow('Volume', 'range', 0, 100, 50));
-    
-    const aStarRow = document.createElement('div');
-    aStarRow.className = 'settings-row';
-    const aStarLabel = document.createElement('label');
-    aStarLabel.innerText = '采用更智能的无解判断';
-    const aStarCheck = document.createElement('input');
-    aStarCheck.type = 'checkbox';
-    const aStarText = document.createElement('span');
-    aStarText.innerText = '启用A*';
-    aStarRow.appendChild(aStarLabel);
-    const checkContainer = document.createElement('div');
-    checkContainer.appendChild(aStarCheck);
-    checkContainer.appendChild(aStarText);
-    aStarRow.appendChild(checkContainer);
-    vbox.appendChild(aStarRow);
-
-    const seedRow = document.createElement('div');
-    seedRow.className = 'settings-row';
-    const seedLabel = document.createElement('label');
-    seedLabel.innerText = '设定地图生成种子';
-    const seedInput = document.createElement('input');
-    seedInput.type = 'text';
-    seedInput.value = '53';
-    seedRow.appendChild(seedLabel);
-    seedRow.appendChild(seedInput);
-    vbox.appendChild(seedRow);
-    
-    paper.appendChild(vbox);
-  }
-
-  private createSettingsRow(labelText: string, type: string, min?: number, max?: number, value?: any) {
-    const row = document.createElement('div');
-    row.className = 'settings-row';
-    const label = document.createElement('label');
-    label.innerText = labelText;
-    const input = document.createElement('input');
-    input.type = type;
-    if (min !== undefined) input.min = min.toString();
-    if (max !== undefined) input.max = max.toString();
-    if (value !== undefined) input.value = value.toString();
-    row.appendChild(label);
-    row.appendChild(input);
-    return row;
+    showSettingsDialog(this.app);
   }
 
   private showThemeDialog() {
@@ -470,11 +439,12 @@ export class Menu {
   }
 
   private playMusic() {
-    const audio = new Audio('/assets/music/main.m4a');
-    audio.loop = true;
+    this.bgm = new Audio('/assets/music/main.m4a');
+    this.bgm.loop = true;
+    this.bgm.volume = settingsManager.currentSettings.volume / 100;
     // Autoplay might be blocked by browser, usually needs user interaction
     document.addEventListener('click', () => {
-      audio.play().catch(() => {});
+      this.bgm?.play().catch(() => {});
     }, { once: true });
   }
 }

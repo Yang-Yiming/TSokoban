@@ -4,6 +4,8 @@ import { MAP_DATA } from './mapData';
 import { AStarSolver } from './AStarSolver';
 
 import { showThemeDialog } from '../ui/themeDialog';
+import { showSettingsDialog } from '../ui/settingsDialog';
+import { settingsManager } from '../settings';
 
 export class GameController {
     private currentMap: SokobanMap | null = null;
@@ -35,11 +37,21 @@ export class GameController {
 
     private onExit: () => void;
     private container: HTMLElement;
+    private settingsListener: (settings: any) => void;
 
     constructor(container: HTMLElement, onExit: () => void) {
         this.container = container;
         this.scene = new GameScene(container);
         this.onExit = onExit;
+        
+        this.settingsListener = (settings) => {
+            this.moveAnimDuration = settings.moveAnimDuration;
+            if (this.bgm) {
+                this.bgm.volume = settings.volume / 100;
+            }
+        };
+        settingsManager.addListener(this.settingsListener);
+
         this.setupInput();
         this.createUI(container);
         this.startAnimationLoop();
@@ -56,6 +68,7 @@ export class GameController {
             target.removeEventListener(type, handler);
         });
         this.eventListeners = [];
+        settingsManager.removeListener(this.settingsListener);
         this.scene.destroy();
     }
 
@@ -68,7 +81,7 @@ export class GameController {
         if (this.bgm) this.bgm.pause();
         this.bgm = new Audio('/assets/music/classic.m4a');
         this.bgm.loop = true;
-        this.bgm.volume = 0.3;
+        this.bgm.volume = settingsManager.currentSettings.volume / 100;
         this.bgm.play().catch(() => {
             console.log('BGM play failed: User interaction required');
             // Try to play on first click
@@ -411,13 +424,35 @@ export class GameController {
                 } else if (this.stepCount >= this.stepLimit) {
                     this.isGameOver = true;
                     this.showLoseAnimation('晕', '好累……', () => this.loadLevel(this.currentLevelIndex));
-                } else if (this.currentMap.isDeadlock()) {
+                } else if (this.isDeadlockDetected()) {
                     this.isGameOver = true;
                     this.showLoseAnimation('菜', '有的猫活着……', () => this.loadLevel(this.currentLevelIndex));
                 }
             }
         };
         this.addManagedEventListener(window, 'keydown', keyHandler);
+    }
+
+    private isDeadlockDetected(): boolean {
+        if (!this.currentMap) return false;
+        
+        // Basic deadlock check (corners)
+        if (this.currentMap.isDeadlock()) return true;
+
+        // Advanced A* deadlock check
+        if (settingsManager.currentSettings.useAStar) {
+            const solver = new AStarSolver(this.currentMap);
+            // Use a smaller node limit for real-time check to avoid lag
+            const solution = solver.solve(2000); 
+            if (solution === null) {
+                // If A* can't find a solution within 2000 nodes, 
+                // it's either unsolvable or too complex.
+                // For "smarter" judgment, we treat it as unsolvable.
+                return true;
+            }
+        }
+
+        return false;
     }
 
     nextLevel() {
@@ -502,37 +537,6 @@ export class GameController {
     }
 
     private showSettings() {
-        const overlay = document.createElement('div');
-        overlay.className = 'settings-overlay';
-        overlay.innerHTML = `
-            <div class="settings-paper">
-                <div class="settings-title">设置</div>
-                <div class="settings-content">
-                    <div class="settings-row">
-                        <span>动画速度</span>
-                        <input type="range" id="anim-speed" min="50" max="500" value="${this.moveAnimDuration}">
-                    </div>
-                    <div class="settings-row">
-                        <span>音量</span>
-                        <input type="range" id="volume" min="0" max="100" value="${(this.bgm?.volume || 0.5) * 100}">
-                    </div>
-                </div>
-                <button class="settings-close">关闭</button>
-            </div>
-        `;
-        this.scene.getCanvas().parentElement?.appendChild(overlay);
-
-        const closeBtn = overlay.querySelector('.settings-close');
-        closeBtn?.addEventListener('click', () => overlay.remove());
-
-        const animSlider = overlay.querySelector('#anim-speed') as HTMLInputElement;
-        animSlider?.addEventListener('input', () => {
-            this.moveAnimDuration = parseInt(animSlider.value);
-        });
-
-        const volumeSlider = overlay.querySelector('#volume') as HTMLInputElement;
-        volumeSlider?.addEventListener('input', () => {
-            if (this.bgm) this.bgm.volume = parseInt(volumeSlider.value) / 100;
-        });
+        showSettingsDialog(this.container);
     }
 }
