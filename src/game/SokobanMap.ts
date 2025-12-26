@@ -116,6 +116,7 @@ export class SokobanMap {
 
     // Move logic
     movePlayer(dx: number, dy: number): { moved: boolean, pushedBox?: { x: number, y: number } } {
+        if (dx === 0 && dy === 0) return { moved: false };
         const pos = this.getPlayerPosition();
         if (!pos) return { moved: false };
 

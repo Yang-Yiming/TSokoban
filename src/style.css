@@ -202,16 +202,17 @@ canvas {
 
 .ui-item-bar {
   position: absolute;
-  bottom: 40px;
-  left: 40px;
+  bottom: 80px;
+  left: 30px;
   display: flex;
   gap: 10px;
   background: url('/assets/images/items.png') no-repeat;
   background-size: 190px 70px;
   width: 190px;
   height: 70px;
-  padding: 15px;
+  padding: 15px 10px;
   box-sizing: border-box;
+  overflow: visible;
 }
 
 .item-group {
@@ -219,17 +220,24 @@ canvas {
   flex-direction: column;
   align-items: center;
   width: 50px;
+  position: relative;
 }
 
 .item-group img {
-  width: 30px;
-  height: 30px;
+  width: 40px;
+  height: 40px;
   cursor: pointer;
 }
 
 .item-group div {
-  font-size: 14px;
-  margin-top: 2px;
+  position: absolute;
+  font-size: 23px;
+  color: #55371d;
+  bottom: -35px;
+  right: -6px;
+  font-family: 'Pixel';
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 .ui-directions {

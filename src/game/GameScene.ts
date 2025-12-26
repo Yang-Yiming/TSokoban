@@ -67,7 +67,7 @@ export class GameScene {
         this.animationInterval = setInterval(() => {
             this.grassTimeId = (this.grassTimeId + 1) % 64;
             this.glowProgress = (this.glowProgress + 0.05) % 1;
-        }, 50);
+        }, 80);
     }
 
     public destroy() {

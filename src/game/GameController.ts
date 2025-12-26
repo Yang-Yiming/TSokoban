@@ -12,7 +12,7 @@ export class GameController {
     private itemCounts = { hint: 3, plus: 3, undo: 3 };
     
     private playerOrientation: number = 2; // 1:up, 2:down, 3:left, 4:right
-    private isMoving: boolean = false;
+    private isGameOver: boolean = false;
     private moveAnimDuration: number = 150;
     private lastMoveTime: number = 0;
     private lastMoveDir: { x: number, y: number } = { x: 0, y: 0 };
@@ -20,6 +20,7 @@ export class GameController {
     private bgm: HTMLAudioElement | null = null;
     private isDestroyed: boolean = false;
     private eventListeners: { target: EventTarget, type: string, handler: any }[] = [];
+    private currentOverlay: HTMLElement | null = null;
 
     private uiElements: {
         levelText: HTMLElement;
@@ -179,7 +180,7 @@ export class GameController {
                 img.style.transform = 'none';
 
                 // If dragged upwards significantly, use the item
-                if (startY - e.clientY > 100) {
+                if (startY - e.clientY > 50) {
                     item.action();
                 }
             };
@@ -231,7 +232,8 @@ export class GameController {
     }
 
     private useHint() {
-        if (this.itemCounts.hint <= 0 || !this.currentMap || this.isMoving) return;
+        const now = performance.now();
+        if (this.itemCounts.hint <= 0 || !this.currentMap || this.isGameOver || (now - this.lastMoveTime < this.moveAnimDuration)) return;
         
         const solver = new AStarSolver(this.currentMap);
         const solution = solver.solve(5000);
@@ -242,10 +244,10 @@ export class GameController {
             let orientation = 2;
 
             switch (nextMove) {
-                case 'u': dx = 0; dy = -1; orientation = 1; break;
-                case 'd': dx = 0; dy = 1; orientation = 2; break;
-                case 'l': dx = -1; dy = 0; orientation = 3; break;
-                case 'r': dx = 1; dy = 0; orientation = 4; break;
+                case 'w': dx = 0; dy = -1; orientation = 1; break;
+                case 's': dx = 0; dy = 1; orientation = 2; break;
+                case 'a': dx = -1; dy = 0; orientation = 3; break;
+                case 'd': dx = 1; dy = 0; orientation = 4; break;
             }
 
             const moveResult = this.currentMap.movePlayer(dx, dy);
@@ -265,6 +267,7 @@ export class GameController {
                 this.updateUI();
 
                 if (this.currentMap.isWin()) {
+                    this.isGameOver = true;
                     this.showWinAnimation(() => this.nextLevel());
                 }
             }
@@ -274,15 +277,29 @@ export class GameController {
     }
 
     private usePlus() {
-        if (this.itemCounts.plus <= 0) return;
+        if (this.itemCounts.plus <= 0 || !this.currentMap) return;
         this.stepLimit += 5;
         this.itemCounts.plus--;
+        
+        if (this.isGameOver && this.stepCount < this.stepLimit && !this.currentMap.isDeadlock()) {
+            this.isGameOver = false;
+            if (this.currentOverlay) {
+                this.currentOverlay.remove();
+                this.currentOverlay = null;
+            }
+        }
+        
         this.updateUI();
     }
 
     private useUndo() {
         if (this.itemCounts.undo <= 0 || !this.currentMap) return;
         if (this.currentMap.undo()) {
+            this.isGameOver = false;
+            if (this.currentOverlay) {
+                this.currentOverlay.remove();
+                this.currentOverlay = null;
+            }
             this.stepCount--;
             this.itemCounts.undo--;
             this.lastMoveTime = 0; // Reset animation to snap to previous position
@@ -292,9 +309,16 @@ export class GameController {
 
     loadLevel(index: number) {
         if (index < 0 || index >= MAP_DATA.length) return;
+        
+        if (this.currentOverlay) {
+            this.currentOverlay.remove();
+            this.currentOverlay = null;
+        }
+
         this.currentLevelIndex = index;
         this.currentMap = new SokobanMap(MAP_DATA[index]);
         this.stepCount = 0;
+        this.isGameOver = false;
         
         // Calculate step limit using A*
         const solver = new AStarSolver(this.currentMap);
@@ -310,8 +334,7 @@ export class GameController {
         const saveData = {
             levelIndex: this.currentLevelIndex,
             stepCount: this.stepCount,
-            itemCounts: this.itemCounts,
-            mapMatrix: this.currentMap.getMatrix()
+            itemCounts: this.itemCounts
         };
         localStorage.setItem('sokoban_save', JSON.stringify(saveData));
         alert('游戏已存档！');
@@ -324,7 +347,9 @@ export class GameController {
             this.currentLevelIndex = data.levelIndex;
             this.stepCount = data.stepCount;
             this.itemCounts = data.itemCounts;
-            this.currentMap = new SokobanMap(data.mapMatrix);
+            // If saved mapMatrix exists use it, otherwise fall back to original level data
+            const mapData = data.mapMatrix || MAP_DATA[this.currentLevelIndex];
+            this.currentMap = new SokobanMap(mapData);
             
             // Recalculate step limit
             const solver = new AStarSolver(this.currentMap);
@@ -340,7 +365,11 @@ export class GameController {
 
     private setupInput() {
         const keyHandler = (e: KeyboardEvent) => {
-            if (!this.currentMap || this.isDestroyed) return;
+            if (!this.currentMap || this.isDestroyed || this.isGameOver) return;
+
+            // Prevent moving while animation is playing
+            const now = performance.now();
+            if (now - this.lastMoveTime < this.moveAnimDuration) return;
 
             let moveResult: { moved: boolean, pushedBox?: { x: number, y: number } } = { moved: false };
             let newOrientation = this.playerOrientation;
@@ -401,10 +430,13 @@ export class GameController {
                 this.updateUI();
                 
                 if (this.currentMap.isWin()) {
+                    this.isGameOver = true;
                     this.showWinAnimation(() => this.nextLevel());
                 } else if (this.stepCount >= this.stepLimit) {
+                    this.isGameOver = true;
                     this.showLoseAnimation('晕', '好累……', () => this.loadLevel(this.currentLevelIndex));
                 } else if (this.currentMap.isDeadlock()) {
+                    this.isGameOver = true;
                     this.showLoseAnimation('菜', '有的猫活着……', () => this.loadLevel(this.currentLevelIndex));
                 }
             }
@@ -419,6 +451,7 @@ export class GameController {
     private showWinAnimation(callback: () => void) {
         if (this.isDestroyed) return;
         const overlay = document.createElement('div');
+        this.currentOverlay = overlay;
         overlay.className = 'win-overlay';
         overlay.innerHTML = `
             <div class="win-content">
@@ -431,7 +464,7 @@ export class GameController {
 
         // Sequence: In -> Pause -> Out (Matching Win.java)
         setTimeout(() => {
-            if (this.isDestroyed) {
+            if (this.isDestroyed || this.currentOverlay !== overlay) {
                 overlay.remove();
                 return;
             }
@@ -439,13 +472,16 @@ export class GameController {
         }, 10);
         
         setTimeout(() => {
-            if (this.isDestroyed) {
+            if (this.isDestroyed || this.currentOverlay !== overlay) {
                 overlay.remove();
                 return;
             }
             overlay.classList.add('exit');
             setTimeout(() => {
-                overlay.remove();
+                if (this.currentOverlay === overlay) {
+                    overlay.remove();
+                    this.currentOverlay = null;
+                }
                 if (!this.isDestroyed) callback();
             }, 600);
         }, 2000);
@@ -454,6 +490,7 @@ export class GameController {
     private showLoseAnimation(text: string, subtext: string, callback: () => void) {
         if (this.isDestroyed) return;
         const overlay = document.createElement('div');
+        this.currentOverlay = overlay;
         overlay.className = 'lose-overlay';
         overlay.innerHTML = `
             <div class="lose-text">${text}</div>
@@ -463,7 +500,7 @@ export class GameController {
         this.scene.getCanvas().parentElement?.appendChild(overlay);
 
         setTimeout(() => {
-            if (this.isDestroyed) {
+            if (this.isDestroyed || this.currentOverlay !== overlay) {
                 overlay.remove();
                 return;
             }
@@ -471,7 +508,10 @@ export class GameController {
         }, 10);
 
         overlay.querySelector('.lose-btn')?.addEventListener('click', () => {
-            overlay.remove();
+            if (this.currentOverlay === overlay) {
+                overlay.remove();
+                this.currentOverlay = null;
+            }
             if (!this.isDestroyed) callback();
         });
     }
