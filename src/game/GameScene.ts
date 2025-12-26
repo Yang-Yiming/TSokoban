@@ -1,6 +1,7 @@
 import { SokobanMap } from './SokobanMap';
 import { TILE_MASK } from './types';
 import { myRand } from '../utils';
+import { themeManager } from '../theme';
 
 export class GameScene {
     private canvas: HTMLCanvasElement;
@@ -15,23 +16,15 @@ export class GameScene {
     private isDragging: boolean = false;
     private lastMouseX: number = 0;
     private lastMouseY: number = 0;
-    private themes = [
-        { r: 124, g: 153, b: 32 },  // 苔藓绿
-        { r: 241, g: 147, b: 156 }, // 春梅红
-        { r: 204, g: 204, b: 214 }, // 远山紫
-        { r: 19, g: 44, b: 51 },    // 深灰蓝
-        { r: 124, g: 113, b: 32 }   // yym 色
-    ];
-    private currentThemeIndex = 0;
-    private themeColor: { r: number, g: number, b: number } = this.themes[0];
     private grassTimeId: number = 0;
     private glowProgress: number = 0;
     private isCameraFollow: boolean = true;
-    private lastDragTime: number = 0;
     private cameraInterval: any = null;
     private animationInterval: any = null;
     private boundMouseMove: any;
     private boundMouseUp: any;
+    private currentMap: SokobanMap | null = null;
+    private themeListener: (theme: any) => void;
 
     constructor(container: HTMLElement) {
         this.canvas = document.createElement('canvas');
@@ -63,21 +56,18 @@ export class GameScene {
         this.setupDragging();
         this.loadImages();
         
+        this.themeListener = () => {
+            if (this.currentMap) {
+                this.render(this.currentMap);
+            }
+        };
+        themeManager.addListener(this.themeListener);
+
         // Animation loop for grass and glow
         this.animationInterval = setInterval(() => {
             this.grassTimeId = (this.grassTimeId + 1) % 64;
             this.glowProgress = (this.glowProgress + 0.05) % 1;
         }, 80);
-    }
-
-    public destroy() {
-        if (this.animationInterval) clearInterval(this.animationInterval);
-        if (this.cameraInterval) clearInterval(this.cameraInterval);
-        window.removeEventListener('mousemove', this.boundMouseMove);
-        window.removeEventListener('mouseup', this.boundMouseUp);
-        this.playerImg.remove();
-        this.canvas.remove();
-        this.topCanvas.remove();
     }
 
     private async loadImages() {
@@ -152,7 +142,6 @@ export class GameScene {
                 this.anchorY += dy;
                 this.lastMouseX = e.clientX;
                 this.lastMouseY = e.clientY;
-                this.lastDragTime = Date.now();
             }
         };
 
@@ -187,11 +176,6 @@ export class GameScene {
         return { x: this.anchorX, y: this.anchorY };
     }
 
-    public nextTheme() {
-        this.currentThemeIndex = (this.currentThemeIndex + 1) % this.themes.length;
-        this.themeColor = this.themes[this.currentThemeIndex];
-    }
-
     public setCameraFollow(enabled: boolean) {
         this.isCameraFollow = enabled;
     }
@@ -199,9 +183,6 @@ export class GameScene {
     public triggerCameraFollow(playerX: number, playerY: number) {
         if (!this.isCameraFollow) return;
         
-        // Reset drag timer so movement immediately takes control
-        this.lastDragTime = 0;
-
         if (this.cameraInterval) clearInterval(this.cameraInterval);
 
         this.cameraInterval = setInterval(() => {
@@ -243,6 +224,7 @@ export class GameScene {
         moveDir: { x: number, y: number },
         pushedBox: { x: number, y: number } | null
     }) {
+        this.currentMap = map;
         this.ctx.imageSmoothingEnabled = false;
         this.topCtx.imageSmoothingEnabled = false;
         
@@ -345,7 +327,7 @@ export class GameScene {
         const y = Math.floor(this.anchorY + dy * this.tileSize + Math.abs(myRand(dx, dy, -1, 1, 7)) * dsize + bdy * dsize);
 
         if (isShadow) {
-            const baseColor = this.themeColor;
+            const baseColor = themeManager.currentTheme.color;
             ctx.fillStyle = `rgb(${Math.floor(baseColor.r * 0.8)}, ${Math.floor(baseColor.g * 0.8)}, ${Math.floor(baseColor.b * 0.8)})`;
             ctx.fillRect(x, y + Math.floor(dsize * 4), Math.ceil(dsize * 2), Math.ceil(dsize * 2));
         } else {
@@ -355,9 +337,10 @@ export class GameScene {
     }
 
     private randColor(dx: number, dy: number, offset: number = 0) {
-        const r = this.themeColor.r + myRand(dx, dy, 1 + offset, -10, 10);
-        const g = this.themeColor.g + myRand(dx, dy, 2 + offset, -10, 10);
-        const b = this.themeColor.b + myRand(dx, dy, 3 + offset, -10, 10);
+        const themeColor = themeManager.currentTheme.color;
+        const r = themeColor.r + myRand(dx, dy, 1 + offset, -10, 10);
+        const g = themeColor.g + myRand(dx, dy, 2 + offset, -10, 10);
+        const b = themeColor.b + myRand(dx, dy, 3 + offset, -10, 10);
         return `rgb(${r}, ${g}, ${b})`;
     }
 
@@ -530,5 +513,16 @@ export class GameScene {
 
     getCanvas(): HTMLCanvasElement {
         return this.canvas;
+    }
+
+    public destroy() {
+        if (this.cameraInterval) clearInterval(this.cameraInterval);
+        if (this.animationInterval) clearInterval(this.animationInterval);
+        window.removeEventListener('mousemove', this.boundMouseMove);
+        window.removeEventListener('mouseup', this.boundMouseUp);
+        themeManager.removeListener(this.themeListener);
+        this.playerImg.remove();
+        this.canvas.remove();
+        this.topCanvas.remove();
     }
 }

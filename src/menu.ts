@@ -1,5 +1,8 @@
 import { myRand, randColor } from './utils';
 import { GameController, MAP_DATA } from './game';
+import { themeManager } from './theme';
+import { showThemeDialog } from './ui/themeDialog';
+import { createDialog } from './ui/dialog';
 
 export class Menu {
   private app: HTMLElement;
@@ -16,10 +19,21 @@ export class Menu {
   private catV: number = 0;
   private catA: number = 0.15;
   private isDragging: boolean = false;
+  private grassElements: { el: HTMLElement, i: number, j: number }[] = [];
 
   constructor(appId: string) {
     this.app = document.getElementById(appId)!;
     this.init();
+    
+    themeManager.addListener(() => {
+      this.updateGrassColors();
+    });
+  }
+
+  private updateGrassColors() {
+    this.grassElements.forEach(({ el, i, j }) => {
+      el.style.backgroundColor = randColor(i, j);
+    });
   }
 
   private init() {
@@ -65,6 +79,7 @@ export class Menu {
         rect.style.top = `${600 - height}px`;
         rect.style.backgroundColor = randColor(i, j);
         this.app.appendChild(rect);
+        this.grassElements.push({ el: rect, i, j });
       }
 
       // Create base last so it's on top of blades (matching Java order)
@@ -76,6 +91,7 @@ export class Menu {
       baseRect.style.top = `${600 - 50}px`;
       baseRect.style.backgroundColor = randColor(i, i);
       this.app.appendChild(baseRect);
+      this.grassElements.push({ el: baseRect, i, j: i });
     }
   }
 
@@ -176,36 +192,8 @@ export class Menu {
     btn.addEventListener('click', onClick);
   }
 
-  private createDialog(title: string) {
-    const shade = document.createElement('div');
-    shade.className = 'dialog-shade';
-    
-    const paper = document.createElement('div');
-    paper.className = 'dialog-paper';
-    
-    const titleText = document.createElement('div');
-    titleText.className = 'dialog-title';
-    titleText.innerText = title;
-    paper.appendChild(titleText);
-    
-    const closeBtn = document.createElement('button');
-    closeBtn.className = 'dialog-close';
-    const closeImg = document.createElement('img');
-    closeImg.src = '/assets/images/X.png';
-    closeBtn.appendChild(closeImg);
-    closeBtn.onclick = () => {
-      shade.remove();
-    };
-    paper.appendChild(closeBtn);
-    
-    shade.appendChild(paper);
-    this.app.appendChild(shade);
-    
-    return { shade, paper };
-  }
-
   private showLoginDialog() {
-    const { paper } = this.createDialog('Login');
+    const { paper } = createDialog(this.app, 'Login');
     
     const vbox = document.createElement('div');
     vbox.className = 'login-vbox';
@@ -244,7 +232,7 @@ export class Menu {
   }
 
   private showSettingsDialog() {
-    const { paper } = this.createDialog('Settings');
+    const { paper } = createDialog(this.app, 'Settings');
     
     const vbox = document.createElement('div');
     vbox.className = 'settings-vbox';
@@ -297,35 +285,7 @@ export class Menu {
   }
 
   private showThemeDialog() {
-    const { paper } = this.createDialog('主题');
-    
-    const list = document.createElement('div');
-    list.className = 'theme-list';
-    
-    const themes = [
-      { name: '苔藓绿', color: 'rgb(124, 153, 32)' },
-      { name: '春梅红', color: 'rgb(241, 147, 156)' },
-      { name: '远山紫', color: 'rgb(204, 204, 214)' },
-      { name: '深灰蓝', color: 'rgb(68, 78, 94)' },
-      { name: 'yym 色', color: 'rgb(124, 153, 32)' },
-      { name: 'gyx 色', color: 'rgb(241, 147, 156)' }
-    ];
-    
-    themes.forEach(theme => {
-      const option = document.createElement('label');
-      option.className = 'theme-option';
-      option.style.color = theme.color;
-      
-      const radio = document.createElement('input');
-      radio.type = 'radio';
-      radio.name = 'theme';
-      
-      option.appendChild(radio);
-      option.appendChild(document.createTextNode(theme.name));
-      list.appendChild(option);
-    });
-    
-    paper.appendChild(list);
+    showThemeDialog(this.app);
   }
 
   private addJumpyHover(btn: HTMLElement, isCentered: boolean) {
@@ -390,7 +350,7 @@ export class Menu {
   }
 
   private showLevelSelect() {
-    const { shade, paper } = this.createDialog('选择关卡');
+    const { shade, paper } = createDialog(this.app, '选择关卡');
     const grid = document.createElement('div');
     grid.className = 'level-grid';
 

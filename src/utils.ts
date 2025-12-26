@@ -1,3 +1,5 @@
+import { themeManager } from './theme';
+
 export function generatePseudoRandom(x: number, y: number, z: number): number {
   x ^= x << 6;
   y ^= y << 5;
@@ -14,7 +16,7 @@ export function myRand(a: number, b: number, c: number, l: number, r: number): n
 }
 
 export function randColor(dx: number, dy: number): string {
-  const themeColor = { r: 124, g: 153, b: 32 };
+  const themeColor = themeManager.currentTheme.color;
   const R = themeColor.r + myRand(dx, dy, 1, -10, 10);
   const G = themeColor.g + myRand(dx, dy, 2, -10, 10);
   const B = themeColor.b + myRand(dx, dy, 3, -10, 10);

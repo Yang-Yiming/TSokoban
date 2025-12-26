@@ -3,6 +3,8 @@ import { GameScene } from './GameScene';
 import { MAP_DATA } from './mapData';
 import { AStarSolver } from './AStarSolver';
 
+import { showThemeDialog } from '../ui/themeDialog';
+
 export class GameController {
     private currentMap: SokobanMap | null = null;
     private scene: GameScene;
@@ -32,8 +34,10 @@ export class GameController {
     } | null = null;
 
     private onExit: () => void;
+    private container: HTMLElement;
 
     constructor(container: HTMLElement, onExit: () => void) {
+        this.container = container;
         this.scene = new GameScene(container);
         this.onExit = onExit;
         this.setupInput();
@@ -129,7 +133,7 @@ export class GameController {
                     if (this.bgm) this.bgm.pause();
                     this.onExit();
                 }
-                else if (name === 'theme') this.scene.nextTheme();
+                else if (name === 'theme') showThemeDialog(this.container);
                 else if (name === 'settings') this.showSettings();
             };
             topIcons.appendChild(img);

@@ -202,7 +202,7 @@ canvas {
 
 .ui-item-bar {
   position: absolute;
-  bottom: 80px;
+  bottom: 35px;
   left: 30px;
   display: flex;
   gap: 10px;
@@ -428,13 +428,33 @@ canvas {
 .theme-option {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 20px;
+  gap: 15px;
+  font-size: 24px;
   cursor: pointer;
+  font-family: 'Pixel';
 }
 
-.theme-option input {
+.theme-option input[type="radio"] {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  outline: none;
   cursor: pointer;
+  position: relative;
+}
+
+.theme-option input[type="radio"]:checked::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 8px;
+  height: 8px;
+  background-color: currentColor;
+  border-radius: 50%;
 }
 
 /* Win/Lose Overlays */
