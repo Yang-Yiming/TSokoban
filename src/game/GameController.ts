@@ -315,6 +315,17 @@ export class GameController {
             this.currentOverlay = null;
         }
 
+        // Add fade-in effect (Matching Level.java)
+        const fadeOverlay = document.createElement('div');
+        fadeOverlay.className = 'fade-in-overlay';
+        this.scene.getCanvas().parentElement?.appendChild(fadeOverlay);
+        
+        // Trigger fade out of the black screen
+        setTimeout(() => {
+            fadeOverlay.classList.add('hide');
+            setTimeout(() => fadeOverlay.remove(), 1000);
+        }, 50);
+
         this.currentLevelIndex = index;
         this.currentMap = new SokobanMap(MAP_DATA[index]);
         this.stepCount = 0;
@@ -483,8 +494,8 @@ export class GameController {
                     this.currentOverlay = null;
                 }
                 if (!this.isDestroyed) callback();
-            }, 600);
-        }, 2000);
+            }, 150);
+        }, 500);
     }
 
     private showLoseAnimation(text: string, subtext: string, callback: () => void) {
@@ -493,27 +504,36 @@ export class GameController {
         this.currentOverlay = overlay;
         overlay.className = 'lose-overlay';
         overlay.innerHTML = `
-            <div class="lose-text">${text}</div>
-            <div class="lose-subtext">${subtext}</div>
-            <button class="lose-btn">重试</button>
+            <div class="lose-content">
+                <div class="lose-text">${text}</div>
+                <div class="lose-subtext">${subtext}</div>
+            </div>
         `;
         this.scene.getCanvas().parentElement?.appendChild(overlay);
 
+        // Fade in background (400ms)
         setTimeout(() => {
             if (this.isDestroyed || this.currentOverlay !== overlay) {
                 overlay.remove();
                 return;
             }
             overlay.classList.add('show');
+            
+            // Fade in text (800ms) after background starts
+            setTimeout(() => {
+                if (this.isDestroyed || this.currentOverlay !== overlay) return;
+                overlay.classList.add('show-text');
+                
+                // Auto restart after text fade in finishes
+                setTimeout(() => {
+                    if (this.currentOverlay === overlay) {
+                        overlay.remove();
+                        this.currentOverlay = null;
+                    }
+                    if (!this.isDestroyed) callback();
+                }, 1200); // Wait for text fade (800ms) + a small pause
+            }, 400);
         }, 10);
-
-        overlay.querySelector('.lose-btn')?.addEventListener('click', () => {
-            if (this.currentOverlay === overlay) {
-                overlay.remove();
-                this.currentOverlay = null;
-            }
-            if (!this.isDestroyed) callback();
-        });
     }
 
     private showSettings() {
