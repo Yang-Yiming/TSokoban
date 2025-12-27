@@ -8,8 +8,24 @@ import { themeManager } from '../theme';
 export class LevelSelect {
     private canvas: HTMLCanvasElement;
     private ctx: CanvasRenderingContext2D;
+    private catImg: HTMLImageElement;
+    private currentCatImgPath: string = '';
     private uiOverlay: HTMLElement | null = null;
     private chunks: Map<string, Int8Array> = new Map();
+    private catX: number = 0;
+    private catY: number = 0;
+    private catDir: 'front' | 'back' | 'left' | 'right' = 'front';
+    private isMoving: boolean = false;
+    private moveProgress: number = 0;
+    private moveStartX: number = 0;
+    private moveStartY: number = 0;
+    private moveTargetX: number = 0;
+    private moveTargetY: number = 0;
+    private currentMoveDuration: number = 150;
+    private readonly MOVE_DURATION_PER_TILE = 150; // ms
+    private lastFrameTime: number = 0;
+    private isCameraFollowing: boolean = false;
+
     private anchorX: number = 0;
     private anchorY: number = 0;
     private nodeWidth: number = 40;
@@ -36,25 +52,77 @@ export class LevelSelect {
     private isDragging = false;
     private lastMouseX = 0;
     private lastMouseY = 0;
+    private mouseDownX = 0;
+    private mouseDownY = 0;
 
-    constructor(container: HTMLElement, onLevelSelect: (levelIndex: number) => void, onBack: () => void) {
+    constructor(container: HTMLElement, onLevelSelect: (levelIndex: number) => void, onBack: () => void, initialLevelIndex: number = 0) {
         this.canvas = document.createElement('canvas');
         this.canvas.width = 800;
         this.canvas.height = 600;
         this.canvas.style.display = 'block';
         this.canvas.style.imageRendering = 'pixelated';
+        this.canvas.style.position = 'absolute';
+        this.canvas.style.top = '0';
+        this.canvas.style.left = '0';
+        this.canvas.style.zIndex = '0';
         this.ctx = this.canvas.getContext('2d')!;
         this.ctx.imageSmoothingEnabled = false;
         container.appendChild(this.canvas);
+
+        this.catImg = document.createElement('img');
+        this.catImg.style.position = 'absolute';
+        this.catImg.style.pointerEvents = 'none';
+        this.catImg.style.imageRendering = 'pixelated';
+        this.catImg.style.width = `${this.nodeWidth}px`;
+        this.catImg.style.height = `${this.nodeWidth}px`;
+        this.catImg.style.zIndex = '10';
+        this.catImg.style.display = 'block';
+        container.appendChild(this.catImg);
         
         this.onLevelSelect = onLevelSelect;
         this.onBack = onBack;
-        this.anchorX = 800 / 2;
-        this.anchorY = 600 / 2;
+        
+        // Initial cat position
+        const levelSpacing = 10;
+        this.catX = initialLevelIndex * levelSpacing;
+        this.catY = myRand(initialLevelIndex, 777, 0, -4, 4);
+        
+        this.anchorX = 800 / 2 - this.catX * this.nodeWidth - this.nodeWidth / 2;
+        this.anchorY = 600 / 2 - this.catY * this.nodeWidth - this.nodeWidth / 2;
 
         this.boundKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
                 this.onBack();
+            }
+            
+            if (this.isMoving) return;
+
+            let dx = 0;
+            let dy = 0;
+            let newDir: typeof this.catDir = this.catDir;
+            
+            const key = e.key.toLowerCase();
+            if (key === 'w') { dy = -1; newDir = 'back'; }
+            else if (key === 's') { dy = 1; newDir = 'front'; }
+            else if (key === 'a') { dx = -1; newDir = 'left'; }
+            else if (key === 'd') { dx = 1; newDir = 'right'; }
+            else if (e.key === 'Enter') {
+                const val = this.getTileAt(this.catX, this.catY);
+                if (val > 0) this.onLevelSelect(val - 1);
+                return;
+            }
+
+            if (dx !== 0 || dy !== 0) {
+                this.catDir = newDir;
+                const targetX = this.catX + dx;
+                const targetY = this.catY + dy;
+                const tile = this.getTileAt(targetX, targetY);
+                
+                if (tile !== this.WATER && tile !== this.ROCK) {
+                    this.startMove(targetX, targetY);
+                } else {
+                    this.draw(); // Just update direction
+                }
             }
         };
         window.addEventListener('keydown', this.boundKeyDown);
@@ -67,6 +135,7 @@ export class LevelSelect {
         this.loadImages().then(() => {
             this.init();
             this.createUI(container);
+            requestAnimationFrame(this.animate.bind(this));
         });
 
         // Dragging listeners
@@ -74,6 +143,8 @@ export class LevelSelect {
             this.isDragging = true;
             this.lastMouseX = e.clientX;
             this.lastMouseY = e.clientY;
+            this.mouseDownX = e.clientX;
+            this.mouseDownY = e.clientY;
         });
 
         window.addEventListener('mousemove', (e) => {
@@ -84,7 +155,7 @@ export class LevelSelect {
                 this.anchorY += dy;
                 this.lastMouseX = e.clientX;
                 this.lastMouseY = e.clientY;
-                this.draw();
+                // No need to call draw() here, animate() handles it
             }
         });
 
@@ -94,23 +165,113 @@ export class LevelSelect {
 
         // Add click listener for level selection
         this.canvas.addEventListener('click', (e) => {
-            if (Math.abs(e.clientX - this.lastMouseX) > 5 || Math.abs(e.clientY - this.lastMouseY) > 5) {
-                // It was a drag, not a click
-                return;
-            }
+            if (this.isMoving) return;
+            
+            // If moved more than 10px, it's a drag, not a click
+            const dragDist = Math.sqrt(Math.pow(e.clientX - this.mouseDownX, 2) + Math.pow(e.clientY - this.mouseDownY, 2));
+            if (dragDist > 10) return;
+
             const rect = this.canvas.getBoundingClientRect();
             const mouseX = e.clientX - rect.left;
             const mouseY = e.clientY - rect.top;
             
-            // Calculate which tile was clicked
             const tileX = Math.floor((mouseX - this.anchorX) / this.nodeWidth);
             const tileY = Math.floor((mouseY - this.anchorY) / this.nodeWidth);
             
-            const val = this.getTileAt(tileX, tileY);
-            if (val > 0) {
-                this.onLevelSelect(val - 1);
+            if (tileX === this.catX && tileY === this.catY) {
+                const val = this.getTileAt(tileX, tileY);
+                if (val > 0) this.onLevelSelect(val - 1);
+                return;
+            }
+
+            const tile = this.getTileAt(tileX, tileY);
+            if (tile !== this.WATER && tile !== this.ROCK) {
+                this.startMove(tileX, tileY);
             }
         });
+    }
+
+    private startMove(tx: number, ty: number) {
+        const dx = tx - this.catX;
+        const dy = ty - this.catY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist === 0) return;
+
+        this.isMoving = true;
+        this.moveProgress = 0;
+        this.moveStartX = this.catX;
+        this.moveStartY = this.catY;
+        this.moveTargetX = tx;
+        this.moveTargetY = ty;
+        
+        // Proportional duration, but capped for very long distances
+        this.currentMoveDuration = Math.min(dist * this.MOVE_DURATION_PER_TILE, 800);
+
+        if (Math.abs(dx) > Math.abs(dy)) {
+            this.catDir = dx > 0 ? 'right' : 'left';
+        } else {
+            this.catDir = dy > 0 ? 'front' : 'back';
+        }
+    }
+
+    private animate(time: number) {
+        if (!this.lastFrameTime) this.lastFrameTime = time;
+        const dt = Math.min(time - this.lastFrameTime, 100); // Cap dt to avoid huge jumps
+        this.lastFrameTime = time;
+
+        if (this.isMoving) {
+            this.moveProgress += dt / this.currentMoveDuration;
+            if (this.moveProgress >= 1) {
+                this.catX = this.moveTargetX;
+                this.catY = this.moveTargetY;
+                this.moveProgress = 0;
+                this.isMoving = false;
+            }
+        }
+
+        this.updateCamera();
+        this.draw();
+        requestAnimationFrame(this.animate.bind(this));
+    }
+
+    private updateCamera() {
+        const targetCatX = this.isMoving ? 
+            this.moveStartX + (this.moveTargetX - this.moveStartX) * this.moveProgress : 
+            this.catX;
+        const targetCatY = this.isMoving ? 
+            this.moveStartY + (this.moveTargetY - this.moveStartY) * this.moveProgress : 
+            this.catY;
+
+        const idealAnchorX = 800 / 2 - targetCatX * this.nodeWidth - this.nodeWidth / 2;
+        const idealAnchorY = 600 / 2 - targetCatY * this.nodeWidth - this.nodeWidth / 2;
+
+        if (this.isDragging) {
+            this.isCameraFollowing = false;
+            return;
+        }
+
+        const dx = idealAnchorX - this.anchorX;
+        const dy = idealAnchorY - this.anchorY;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        
+        // Trigger follow if cat moves and is outside threshold
+        const threshold = 180; 
+        if (this.isMoving && dist > threshold) {
+            this.isCameraFollowing = true;
+        }
+
+        if (this.isCameraFollowing) {
+            // Pull back smoothly
+            this.anchorX += dx * 0.08;
+            this.anchorY += dy * 0.08;
+            
+            // Stop following when very close to centered
+            if (dist < 1) {
+                this.anchorX = idealAnchorX;
+                this.anchorY = idealAnchorY;
+                this.isCameraFollowing = false;
+            }
+        }
     }
 
     private async loadImages() {
@@ -122,7 +283,13 @@ export class LevelSelect {
             '/assets/images/bush/lily2.png',
             '/assets/images/bush/lily3.png',
             '/assets/images/level.png',
-            '/assets/images/item/cloud.png'
+            '/assets/images/item/cloud.png',
+            '/assets/images/player_cat/cat_stand.gif',
+            '/assets/images/player_cat/cat_stand_back.gif',
+            '/assets/images/player_cat/cat_stand_front.gif',
+            '/assets/images/player_cat/cat_run.gif',
+            '/assets/images/player_cat/cat_run_back.gif',
+            '/assets/images/player_cat/cat_run_front.gif'
         ];
 
         const promises = imagePaths.map(path => {
@@ -439,6 +606,50 @@ export class LevelSelect {
                 }
             }
         }
+
+        // 3. Draw Cat
+        this.drawCat();
+    }
+
+    private drawCat() {
+        const currentX = this.isMoving ? 
+            this.moveStartX + (this.moveTargetX - this.moveStartX) * this.moveProgress : 
+            this.catX;
+        const currentY = this.isMoving ? 
+            this.moveStartY + (this.moveTargetY - this.moveStartY) * this.moveProgress : 
+            this.catY;
+
+        const screenX = this.anchorX + currentX * this.nodeWidth;
+        const screenY = this.anchorY + currentY * this.nodeWidth;
+        
+        let imgPath = '';
+        let flip = false;
+
+        if (this.isMoving) {
+            if (this.catDir === 'back') imgPath = '/assets/images/player_cat/cat_run_back.gif';
+            else if (this.catDir === 'front') imgPath = '/assets/images/player_cat/cat_run_front.gif';
+            else if (this.catDir === 'left') {
+                imgPath = '/assets/images/player_cat/cat_run.gif';
+                flip = true;
+            }
+            else if (this.catDir === 'right') imgPath = '/assets/images/player_cat/cat_run.gif';
+        } else {
+            if (this.catDir === 'back') imgPath = '/assets/images/player_cat/cat_stand_back.gif';
+            else if (this.catDir === 'front') imgPath = '/assets/images/player_cat/cat_stand_front.gif';
+            else if (this.catDir === 'left') {
+                imgPath = '/assets/images/player_cat/cat_stand.gif';
+                flip = true;
+            }
+            else if (this.catDir === 'right') imgPath = '/assets/images/player_cat/cat_stand.gif';
+        }
+
+        if (this.currentCatImgPath !== imgPath) {
+            this.currentCatImgPath = imgPath;
+            this.catImg.src = imgPath;
+        }
+        this.catImg.style.left = `${screenX}px`;
+        this.catImg.style.top = `${screenY}px`;
+        this.catImg.style.transform = flip ? 'scaleX(-1)' : 'none';
     }
 
     private drawGrass(dx: number, dy: number) {
@@ -496,6 +707,7 @@ export class LevelSelect {
         if (this.uiOverlay) {
             this.uiOverlay.remove();
         }
+        this.catImg.remove();
         this.canvas.remove();
     }
 }

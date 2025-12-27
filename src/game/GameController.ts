@@ -35,11 +35,11 @@ export class GameController {
         itemUndoText: HTMLElement;
     } | null = null;
 
-    private onExit: () => void;
+    private onExit: (lastLevelIndex?: number) => void;
     private container: HTMLElement;
     private settingsListener: (settings: any) => void;
 
-    constructor(container: HTMLElement, onExit: () => void) {
+    constructor(container: HTMLElement, onExit: (lastLevelIndex?: number) => void) {
         this.container = container;
         this.scene = new GameScene(container);
         this.onExit = onExit;
@@ -144,7 +144,7 @@ export class GameController {
             img.onclick = () => {
                 if (name === 'home') {
                     if (this.bgm) this.bgm.pause();
-                    this.onExit();
+                    this.onExit(this.currentLevelIndex);
                 }
                 else if (name === 'theme') showThemeDialog(this.container);
                 else if (name === 'settings') this.showSettings();
@@ -285,7 +285,7 @@ export class GameController {
 
                 if (this.currentMap.isWin()) {
                     this.isGameOver = true;
-                    this.showWinAnimation(() => this.nextLevel());
+                    this.showWinAnimation(() => this.onExit(this.currentLevelIndex));
                 }
             }
         } else {
@@ -399,7 +399,7 @@ export class GameController {
                     return;
                 case 'Escape':
                     this.destroy();
-                    this.onExit();
+                    this.onExit(this.currentLevelIndex);
                     return;
             }
 
@@ -420,7 +420,7 @@ export class GameController {
                 
                 if (this.currentMap.isWin()) {
                     this.isGameOver = true;
-                    this.showWinAnimation(() => this.nextLevel());
+                    this.showWinAnimation(() => this.onExit(this.currentLevelIndex));
                 } else if (this.stepCount >= this.stepLimit) {
                     this.isGameOver = true;
                     this.showLoseAnimation('晕', '好累……', () => this.loadLevel(this.currentLevelIndex));
@@ -450,10 +450,6 @@ export class GameController {
         }
 
         return false;
-    }
-
-    nextLevel() {
-        this.loadLevel((this.currentLevelIndex + 1) % MAP_DATA.length);
     }
 
     private showWinAnimation(callback: () => void) {

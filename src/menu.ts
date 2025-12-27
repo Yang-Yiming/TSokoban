@@ -318,7 +318,7 @@ export class Menu {
     });
   }
 
-  private showLevelSelect() {
+  private showLevelSelect(initialLevelIndex: number = 0) {
     // Hide menu elements
     Array.from(this.app.children).forEach(child => {
       if (child instanceof HTMLElement) {
@@ -337,7 +337,7 @@ export class Menu {
           child.style.display = '';
         }
       });
-    });
+    }, initialLevelIndex);
   }
 
   private startGame(levelIndex: number) {
@@ -358,15 +358,20 @@ export class Menu {
     gameContainer.style.zIndex = '200'; // Higher than dialogs
     this.app.appendChild(gameContainer);
 
-    const controller = new GameController(gameContainer, () => {
+    const controller = new GameController(gameContainer, (lastLevelIndex) => {
       controller.destroy();
       gameContainer.remove();
-      // Show menu elements again
-      Array.from(this.app.children).forEach(child => {
-        if (child instanceof HTMLElement) {
-          child.style.display = '';
-        }
-      });
+      
+      if (lastLevelIndex !== undefined) {
+        this.showLevelSelect(lastLevelIndex);
+      } else {
+        // Show menu elements again
+        Array.from(this.app.children).forEach(child => {
+          if (child instanceof HTMLElement) {
+            child.style.display = '';
+          }
+        });
+      }
     });
 
     controller.loadLevel(levelIndex);
