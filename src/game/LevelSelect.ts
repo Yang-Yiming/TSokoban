@@ -1,16 +1,17 @@
 import { myRand, randColor } from '../utils';
-import { settingsManager } from '../settings';
 import { MAP_DATA } from './mapData';
 import { showThemeDialog } from '../ui/themeDialog';
 import { showSettingsDialog } from '../ui/settingsDialog';
 import { themeManager } from '../theme';
 import { progressManager } from '../progress';
+import type { Equipment } from './types';
 
 export class LevelSelect {
     private canvas: HTMLCanvasElement;
     private ctx: CanvasRenderingContext2D;
     private catImg: HTMLImageElement;
     private chestImg: HTMLImageElement;
+    private equipmentImg: HTMLImageElement;
     private currentCatImgPath: string = '';
     private currentChestImgPath: string = '';
     private isChestOpening: boolean = false;
@@ -27,6 +28,8 @@ export class LevelSelect {
     private moveStartY: number = 0;
     private moveTargetX: number = 0;
     private moveTargetY: number = 0;
+    private movePath: {x: number, y: number}[] = [];
+    private isMouseMoving: boolean = false;
     private currentMoveDuration: number = 150;
     private readonly MOVE_DURATION_PER_TILE = 150; // ms
     private lastFrameTime: number = 0;
@@ -95,6 +98,26 @@ export class LevelSelect {
         this.chestImg.style.zIndex = '9';
         this.chestImg.style.display = 'none';
         container.appendChild(this.chestImg);
+
+        this.equipmentImg = document.createElement('img');
+        this.equipmentImg.style.position = 'absolute';
+        this.equipmentImg.style.bottom = '20px';
+        this.equipmentImg.style.right = '20px';
+        this.equipmentImg.style.width = '64px';
+        this.equipmentImg.style.height = '64px';
+        this.equipmentImg.style.zIndex = '100';
+        this.equipmentImg.style.pointerEvents = 'auto';
+        this.equipmentImg.style.cursor = 'pointer';
+        this.equipmentImg.style.backgroundColor = 'rgba(0, 0, 0, 0.1)';
+        this.equipmentImg.style.borderRadius = '8px';
+        this.equipmentImg.onclick = () => {
+            const current = progressManager.getEquipment();
+            const next: Equipment = current === 'none' ? 'boat' : (current === 'boat' ? 'wing' : 'none');
+            progressManager.setEquipment(next);
+            this.updateEquipmentUI();
+            this.draw();
+        };
+        container.appendChild(this.equipmentImg);
         
         this.onLevelSelect = onLevelSelect;
         this.onBack = onBack;
@@ -111,13 +134,22 @@ export class LevelSelect {
                 this.onBack();
             }
             
+            const key = e.key.toLowerCase();
+            const isWASD = ['w', 'a', 's', 'd'].includes(key);
+
+            if (isWASD && this.isMoving && this.movePath.length > 0) {
+                // Interrupt pathfinding move
+                this.movePath = [];
+                // We let the current tile move finish, or we could snap it.
+                // Snapping might be jarring, so let's just clear the path.
+            }
+
             if (this.isMoving) return;
 
             let dx = 0;
             let dy = 0;
             let newDir: typeof this.catDir = this.catDir;
             
-            const key = e.key.toLowerCase();
             if (key === 'w') { dy = -1; newDir = 'back'; }
             else if (key === 's') { dy = 1; newDir = 'front'; }
             else if (key === 'a') { dx = -1; newDir = 'left'; }
@@ -134,7 +166,17 @@ export class LevelSelect {
                 const targetY = this.catY + dy;
                 const tile = this.getTileAt(targetX, targetY);
                 
-                if (tile !== this.WATER && tile !== this.ROCK && tile !== this.CHEST) {
+                const equipment = progressManager.getEquipment();
+                let canMove = false;
+                if (equipment === 'wing') {
+                    canMove = true; // Wing can go anywhere
+                } else if (equipment === 'boat') {
+                    canMove = (tile !== this.ROCK && tile !== this.CHEST);
+                } else {
+                    canMove = (tile !== this.WATER && tile !== this.ROCK && tile !== this.CHEST);
+                }
+
+                if (canMove) {
                     this.startMove(targetX, targetY);
                 } else {
                     this.draw(); // Just update direction
@@ -200,25 +242,36 @@ export class LevelSelect {
                 return;
             }
 
-            const tile = this.getTileAt(tileX, tileY);
-            if (tile !== this.WATER && tile !== this.ROCK && tile !== this.CHEST) {
-                this.startMove(tileX, tileY);
+            const equipment = progressManager.getEquipment();
+
+            if (equipment === 'wing') {
+                // Wing can move anywhere directly
+                this.startMove(tileX, tileY, [], true);
+            } else {
+                // None or Boat use A*
+                const path = this.findPath(this.catX, this.catY, tileX, tileY);
+                if (path && path.length > 0) {
+                    const first = path.shift()!;
+                    this.startMove(first.x, first.y, path, true);
+                }
             }
         });
     }
 
-    private startMove(tx: number, ty: number) {
+    private startMove(tx: number, ty: number, path: {x: number, y: number}[] = [], isMouse: boolean = false) {
         const dx = tx - this.catX;
         const dy = ty - this.catY;
         const dist = Math.sqrt(dx * dx + dy * dy);
-        if (dist === 0) return;
+        if (dist === 0 && path.length === 0) return;
 
         this.isMoving = true;
+        this.isMouseMoving = isMouse;
         this.moveProgress = 0;
         this.moveStartX = this.catX;
         this.moveStartY = this.catY;
         this.moveTargetX = tx;
         this.moveTargetY = ty;
+        this.movePath = path;
         
         // Proportional duration, but capped for very long distances
         this.currentMoveDuration = Math.min(dist * this.MOVE_DURATION_PER_TILE, 800);
@@ -247,8 +300,15 @@ export class LevelSelect {
                 this.catX = this.moveTargetX;
                 this.catY = this.moveTargetY;
                 this.moveProgress = 0;
-                this.isMoving = false;
-                this.checkChestInteraction();
+                
+                if (this.movePath.length > 0) {
+                    const next = this.movePath.shift()!;
+                    this.startMove(next.x, next.y, this.movePath, this.isMouseMoving);
+                } else {
+                    this.isMoving = false;
+                    this.isMouseMoving = false;
+                    this.checkChestInteraction();
+                }
             }
         }
 
@@ -352,9 +412,18 @@ export class LevelSelect {
             '/assets/images/player_cat/cat_run.gif',
             '/assets/images/player_cat/cat_run_back.gif',
             '/assets/images/player_cat/cat_run_front.gif',
+            '/assets/images/player_cat/cat_boat_up.gif',
+            '/assets/images/player_cat/cat_boat_down.gif',
+            '/assets/images/player_cat/cat_boat_right.gif',
+            '/assets/images/player_cat/cat_fly_up.gif',
+            '/assets/images/player_cat/cat_fly_down.gif',
+            '/assets/images/player_cat/cat_fly_right.gif',
             '/assets/images/treasure_closed.png',
             '/assets/images/treasure_open.gif',
-            '/assets/images/treasure_opened.png'
+            '/assets/images/treasure_opened.png',
+            '/assets/images/boat.png',
+            '/assets/images/wing.png',
+            '/assets/images/none.png'
         ];
 
         const promises = imagePaths.map(path => {
@@ -377,7 +446,112 @@ export class LevelSelect {
 
     private init() {
         this.checkChestInteraction();
+        this.updateEquipmentUI();
         this.draw();
+    }
+
+    private updateEquipmentUI() {
+        const equipment = progressManager.getEquipment();
+        this.equipmentImg.src = `/assets/images/${equipment}.png`;
+        this.equipmentImg.style.opacity = equipment === 'none' ? '0.6' : '1';
+    }
+
+    private findPath(startX: number, startY: number, targetX: number, targetY: number): {x: number, y: number}[] | null {
+        const equipment = progressManager.getEquipment();
+        const isWaterObstacle = equipment === 'none';
+        
+        if (startX === targetX && startY === targetY) return null;
+
+        const openSet: {x: number, y: number, g: number, h: number, f: number, parent: any}[] = [];
+        const closedSet = new Set<string>();
+
+        const startNode = {
+            x: startX,
+            y: startY,
+            g: 0,
+            h: Math.abs(targetX - startX) + Math.abs(targetY - startY),
+            f: 0,
+            parent: null as any
+        };
+        startNode.f = startNode.h;
+        openSet.push(startNode);
+
+        const maxIterations = 2000;
+        let iterations = 0;
+
+        while (openSet.length > 0 && iterations < maxIterations) {
+            iterations++;
+            let currentIndex = 0;
+            for (let i = 1; i < openSet.length; i++) {
+                if (openSet[i].f < openSet[currentIndex].f) currentIndex = i;
+            }
+            const current = openSet.splice(currentIndex, 1)[0];
+
+            if (current.x === targetX && current.y === targetY) {
+                const path = [];
+                let temp = current;
+                while (temp.parent) {
+                    path.push({x: temp.x, y: temp.y});
+                    temp = temp.parent;
+                }
+                return path.reverse();
+            }
+
+            closedSet.add(`${current.x},${current.y}`);
+
+            const currentTile = this.getTileAt(current.x, current.y);
+            const neighbors = [
+                {x: current.x + 1, y: current.y},
+                {x: current.x - 1, y: current.y},
+                {x: current.x, y: current.y + 1},
+                {x: current.x, y: current.y - 1}
+            ];
+
+            for (const neighbor of neighbors) {
+                if (closedSet.has(`${neighbor.x},${neighbor.y}`)) continue;
+
+                const tile = this.getTileAt(neighbor.x, neighbor.y);
+                let isObstacle = false;
+                if (tile === this.ROCK || tile === this.CHEST) isObstacle = true;
+                if (isWaterObstacle && tile === this.WATER) isObstacle = true;
+
+                if (isObstacle) {
+                    if (!(neighbor.x === targetX && neighbor.y === targetY)) {
+                        continue;
+                    } else {
+                        // If target is obstacle, we can't land there unless it's wing
+                        // But A* is only for none/boat.
+                        continue;
+                    }
+                }
+
+                let stepCost = 1;
+                if (equipment === 'boat') {
+                    const isCurrentWater = currentTile === this.WATER;
+                    const isNeighborWater = tile === this.WATER;
+                    if (isCurrentWater !== isNeighborWater) {
+                        stepCost += 2;
+                    }
+                }
+
+                const g = current.g + stepCost;
+                const h = Math.abs(targetX - neighbor.x) + Math.abs(targetY - neighbor.y);
+                const f = g + h;
+
+                const existing = openSet.find(n => n.x === neighbor.x && n.y === neighbor.y);
+                if (existing) {
+                    if (g < existing.g) {
+                        existing.g = g;
+                        existing.f = f;
+                        existing.parent = current;
+                    }
+                } else {
+                    openSet.push({x: neighbor.x, y: neighbor.y, g, h, f, parent: current});
+                }
+            }
+        }
+
+        return null;
     }
 
     private getInitialTileState(x: number, y: number): number {
@@ -524,20 +698,6 @@ export class LevelSelect {
         
         this.chunks.set(`${cx},${cy}`, result);
         return result;
-    }
-
-    private countNeighbors(x: number, y: number, goal: number): number {
-        let cnt = 0;
-        const dx = [1, 0, -1, 0, 1, 1, -1, -1];
-        const dy = [0, 1, 0, -1, 1, -1, 1, -1];
-        for (let i = 0; i < 8; i++) {
-            const xx = x + dx[i];
-            const yy = y + dy[i];
-            if (xx === 0 && yy === 0) continue;
-            const get = this.getTileAt(xx, yy);
-            if (get === goal) cnt++;
-        }
-        return cnt;
     }
 
     private countNeighbors4(x: number, y: number, goal: number): number {
@@ -781,23 +941,65 @@ export class LevelSelect {
         
         let imgPath = '';
         let flip = false;
+        const equipment = progressManager.getEquipment();
+        const tileAtCurrent = this.getTileAt(Math.round(currentX), Math.round(currentY));
 
-        if (this.isMoving) {
-            if (this.catDir === 'back') imgPath = '/assets/images/player_cat/cat_run_back.gif';
-            else if (this.catDir === 'front') imgPath = '/assets/images/player_cat/cat_run_front.gif';
+        if (equipment === 'boat' && tileAtCurrent === this.WATER) {
+            if (this.catDir === 'back') imgPath = '/assets/images/player_cat/cat_boat_up.gif';
+            else if (this.catDir === 'front') imgPath = '/assets/images/player_cat/cat_boat_down.gif';
             else if (this.catDir === 'left') {
-                imgPath = '/assets/images/player_cat/cat_run.gif';
+                imgPath = '/assets/images/player_cat/cat_boat_right.gif';
                 flip = true;
             }
-            else if (this.catDir === 'right') imgPath = '/assets/images/player_cat/cat_run.gif';
+            else if (this.catDir === 'right') imgPath = '/assets/images/player_cat/cat_boat_right.gif';
+        } else if (equipment === 'wing') {
+            const isOverObstacle = tileAtCurrent === this.WATER || tileAtCurrent === this.ROCK || tileAtCurrent === this.CHEST;
+            if ((this.isMoving && this.isMouseMoving) || isOverObstacle) {
+                if (this.catDir === 'back') imgPath = '/assets/images/player_cat/cat_fly_up.gif';
+                else if (this.catDir === 'front') imgPath = '/assets/images/player_cat/cat_fly_down.gif';
+                else if (this.catDir === 'left') {
+                    imgPath = '/assets/images/player_cat/cat_fly_right.gif';
+                    flip = true;
+                }
+                else if (this.catDir === 'right') imgPath = '/assets/images/player_cat/cat_fly_right.gif';
+            } else {
+                // Normal run/stand on land or keyboard move
+                if (this.isMoving) {
+                    if (this.catDir === 'back') imgPath = '/assets/images/player_cat/cat_run_back.gif';
+                    else if (this.catDir === 'front') imgPath = '/assets/images/player_cat/cat_run_front.gif';
+                    else if (this.catDir === 'left') {
+                        imgPath = '/assets/images/player_cat/cat_run.gif';
+                        flip = true;
+                    }
+                    else if (this.catDir === 'right') imgPath = '/assets/images/player_cat/cat_run.gif';
+                } else {
+                    if (this.catDir === 'back') imgPath = '/assets/images/player_cat/cat_stand_back.gif';
+                    else if (this.catDir === 'front') imgPath = '/assets/images/player_cat/cat_stand_front.gif';
+                    else if (this.catDir === 'left') {
+                        imgPath = '/assets/images/player_cat/cat_stand.gif';
+                        flip = true;
+                    }
+                    else if (this.catDir === 'right') imgPath = '/assets/images/player_cat/cat_stand.gif';
+                }
+            }
         } else {
-            if (this.catDir === 'back') imgPath = '/assets/images/player_cat/cat_stand_back.gif';
-            else if (this.catDir === 'front') imgPath = '/assets/images/player_cat/cat_stand_front.gif';
-            else if (this.catDir === 'left') {
-                imgPath = '/assets/images/player_cat/cat_stand.gif';
-                flip = true;
+            if (this.isMoving) {
+                if (this.catDir === 'back') imgPath = '/assets/images/player_cat/cat_run_back.gif';
+                else if (this.catDir === 'front') imgPath = '/assets/images/player_cat/cat_run_front.gif';
+                else if (this.catDir === 'left') {
+                    imgPath = '/assets/images/player_cat/cat_run.gif';
+                    flip = true;
+                }
+                else if (this.catDir === 'right') imgPath = '/assets/images/player_cat/cat_run.gif';
+            } else {
+                if (this.catDir === 'back') imgPath = '/assets/images/player_cat/cat_stand_back.gif';
+                else if (this.catDir === 'front') imgPath = '/assets/images/player_cat/cat_stand_front.gif';
+                else if (this.catDir === 'left') {
+                    imgPath = '/assets/images/player_cat/cat_stand.gif';
+                    flip = true;
+                }
+                else if (this.catDir === 'right') imgPath = '/assets/images/player_cat/cat_stand.gif';
             }
-            else if (this.catDir === 'right') imgPath = '/assets/images/player_cat/cat_stand.gif';
         }
 
         if (this.currentCatImgPath !== imgPath) {

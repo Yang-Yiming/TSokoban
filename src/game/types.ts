@@ -31,6 +31,8 @@ export enum TileType {
     Goal = 8,
 }
 
+export type Equipment = 'none' | 'boat' | 'wing';
+
 export const TILE_MASK = {
     WALL: 1,
     BOX: 2,

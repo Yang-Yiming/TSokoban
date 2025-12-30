@@ -1,3 +1,5 @@
+import type { Equipment } from './game/types';
+
 export interface Progress {
     completedLevels: number[]; // indices of completed levels
     itemCounts: {
@@ -6,6 +8,7 @@ export interface Progress {
         undo: number;
     };
     chestOpened: boolean;
+    equipment: Equipment;
 }
 
 class ProgressManager {
@@ -20,6 +23,7 @@ class ProgressManager {
                 if (!this.progress.completedLevels) this.progress.completedLevels = [];
                 if (!this.progress.itemCounts) this.progress.itemCounts = { hint: 3, plus: 3, undo: 3 };
                 if (this.progress.chestOpened === undefined) this.progress.chestOpened = false;
+                if (!this.progress.equipment) this.progress.equipment = 'none';
             } catch (e) {
                 this.progress = this.getDefaultProgress();
             }
@@ -32,12 +36,22 @@ class ProgressManager {
         return {
             completedLevels: [],
             itemCounts: { hint: 3, plus: 3, undo: 3 },
-            chestOpened: false
+            chestOpened: false,
+            equipment: 'none'
         };
     }
 
     save() {
         localStorage.setItem('tsokoban_progress', JSON.stringify(this.progress));
+    }
+
+    getEquipment(): Equipment {
+        return this.progress.equipment || 'none';
+    }
+
+    setEquipment(equipment: Equipment) {
+        this.progress.equipment = equipment;
+        this.save();
     }
 
     isLevelCompleted(index: number): boolean {
