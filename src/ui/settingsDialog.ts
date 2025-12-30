@@ -1,5 +1,6 @@
 import { createDialog } from './dialog';
 import { settingsManager } from '../settings';
+import { progressManager } from '../progress';
 
 export function showSettingsDialog(container: HTMLElement) {
   const { paper } = createDialog(container, '设置');
@@ -53,6 +54,55 @@ export function showSettingsDialog(container: HTMLElement) {
   seedRow.appendChild(seedLabel);
   seedRow.appendChild(seedInput);
   vbox.appendChild(seedRow);
+
+  // Save Management
+  const saveTitle = document.createElement('div');
+  saveTitle.className = 'settings-section-title';
+  saveTitle.innerText = '存档管理';
+  saveTitle.style.marginTop = '20px';
+  saveTitle.style.fontWeight = 'bold';
+  vbox.appendChild(saveTitle);
+
+  const saveButtonsRow = document.createElement('div');
+  saveButtonsRow.className = 'settings-row';
+  saveButtonsRow.style.justifyContent = 'space-around';
+
+  const exportBtn = document.createElement('button');
+  exportBtn.innerText = '导出存档';
+  exportBtn.onclick = () => {
+    const data = progressManager.exportSave();
+    navigator.clipboard.writeText(data).then(() => {
+      alert('存档已复制到剪贴板');
+    });
+  };
+
+  const importBtn = document.createElement('button');
+  importBtn.innerText = '导入存档';
+  importBtn.onclick = () => {
+    const data = prompt('请粘贴存档代码:');
+    if (data && progressManager.importSave(data)) {
+      alert('存档导入成功，请刷新页面');
+      window.location.reload();
+    } else if (data) {
+      alert('存档导入失败，请检查代码是否正确');
+    }
+  };
+
+  const clearBtn = document.createElement('button');
+  clearBtn.innerText = '清空存档';
+  clearBtn.style.color = 'red';
+  clearBtn.onclick = () => {
+    if (confirm('确定要清空所有存档吗？此操作不可撤销！')) {
+      progressManager.clearSave();
+      alert('存档已清空，请刷新页面');
+      window.location.reload();
+    }
+  };
+
+  saveButtonsRow.appendChild(exportBtn);
+  saveButtonsRow.appendChild(importBtn);
+  saveButtonsRow.appendChild(clearBtn);
+  vbox.appendChild(saveButtonsRow);
   
   paper.appendChild(vbox);
 }

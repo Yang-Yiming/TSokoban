@@ -6,6 +6,7 @@ import { AStarSolver } from './AStarSolver';
 import { showThemeDialog } from '../ui/themeDialog';
 import { showSettingsDialog } from '../ui/settingsDialog';
 import { settingsManager } from '../settings';
+import { progressManager } from '../progress';
 
 export class GameController {
     private currentMap: SokobanMap | null = null;
@@ -13,7 +14,7 @@ export class GameController {
     private currentLevelIndex: number = 0;
     private stepCount: number = 0;
     private stepLimit: number = 0;
-    private itemCounts = { hint: 3, plus: 3, undo: 3 };
+    private itemCounts = progressManager.getItemCounts();
     
     private playerOrientation: number = 2; // 1:up, 2:down, 3:left, 4:right
     private isGameOver: boolean = false;
@@ -21,6 +22,7 @@ export class GameController {
     private lastMoveTime: number = 0;
     private lastMoveDir: { x: number, y: number } = { x: 0, y: 0 };
     private lastPushedBox: { x: number, y: number } | null = null;
+    private moveQueue: { dx: number, dy: number, orientation: number }[] = [];
     private bgm: HTMLAudioElement | null = null;
     private isDestroyed: boolean = false;
     private eventListeners: { target: EventTarget, type: string, handler: any }[] = [];
@@ -98,8 +100,14 @@ export class GameController {
             if (this.isDestroyed) return;
             if (this.currentMap) {
                 const now = performance.now();
-                const progress = Math.min(1, (now - this.lastMoveTime) / this.moveAnimDuration);
+                let progress = Math.min(1, (now - this.lastMoveTime) / this.moveAnimDuration);
                 
+                if (progress >= 1 && this.moveQueue.length > 0 && !this.isGameOver) {
+                    const next = this.moveQueue.shift()!;
+                    this.executeMove(next.dx, next.dy, next.orientation);
+                    progress = 0;
+                }
+
                 this.scene.render(this.currentMap, {
                     orientation: this.playerOrientation,
                     isMoving: progress < 1,
@@ -111,6 +119,48 @@ export class GameController {
             requestAnimationFrame(loop);
         };
         requestAnimationFrame(loop);
+    }
+
+    private executeMove(dx: number, dy: number, orientation: number) {
+        if (!this.currentMap || this.isGameOver) {
+            this.moveQueue = [];
+            return false;
+        }
+
+        const moveResult = this.currentMap.movePlayer(dx, dy);
+        if (moveResult.moved) {
+            this.playerOrientation = orientation;
+            this.lastMoveTime = performance.now();
+            this.lastMoveDir = { x: dx, y: dy };
+            this.lastPushedBox = moveResult.pushedBox || null;
+            
+            const playerPos = this.currentMap.getPlayerPosition();
+            if (playerPos) {
+                this.scene.triggerCameraFollow(playerPos.x, playerPos.y);
+            }
+
+            this.stepCount++;
+            this.updateUI();
+
+            if (this.currentMap.isWin()) {
+                this.isGameOver = true;
+                this.moveQueue = []; // Clear queue on win
+                this.showWinAnimation(() => this.onExit(this.currentLevelIndex));
+            } else if (this.stepCount >= this.stepLimit) {
+                this.isGameOver = true;
+                this.moveQueue = [];
+                this.showLoseAnimation('晕', '好累……', () => this.loadLevel(this.currentLevelIndex));
+            } else if (this.isDeadlockDetected()) {
+                this.isGameOver = true;
+                this.moveQueue = [];
+                this.showLoseAnimation('菜', '有的猫活着……', () => this.loadLevel(this.currentLevelIndex));
+            }
+            return true;
+        } else {
+            this.playerOrientation = orientation; // Still update orientation even if blocked
+            this.moveQueue = []; // Clear queue if blocked
+            return false;
+        }
     }
 
     public setMoveAnimDuration(duration: number) {
@@ -250,44 +300,27 @@ export class GameController {
 
     private useHint() {
         const now = performance.now();
-        if (this.itemCounts.hint <= 0 || !this.currentMap || this.isGameOver || (now - this.lastMoveTime < this.moveAnimDuration)) return;
+        if (this.itemCounts.hint <= 0 || !this.currentMap || this.isGameOver || (now - this.lastMoveTime < this.moveAnimDuration) || this.moveQueue.length > 0) return;
         
         const solver = new AStarSolver(this.currentMap);
         const result = solver.solve(5000);
         
         if (result.status === 'solved' && result.path && result.path.length > 0) {
-            const nextMove = result.path[0];
-            let dx = 0, dy = 0;
-            let orientation = 2;
-
-            switch (nextMove) {
-                case 'w': dx = 0; dy = -1; orientation = 1; break;
-                case 's': dx = 0; dy = 1; orientation = 2; break;
-                case 'a': dx = -1; dy = 0; orientation = 3; break;
-                case 'd': dx = 1; dy = 0; orientation = 4; break;
-            }
-
-            const moveResult = this.currentMap.movePlayer(dx, dy);
-            if (moveResult.moved) {
-                this.playerOrientation = orientation;
-                this.lastMoveTime = performance.now();
-                this.lastMoveDir = { x: dx, y: dy };
-                this.lastPushedBox = moveResult.pushedBox || null;
-                
-                const playerPos = this.currentMap.getPlayerPosition();
-                if (playerPos) {
-                    this.scene.triggerCameraFollow(playerPos.x, playerPos.y);
+            const movesToTake = Math.min(result.path.length, 3);
+            for (let i = 0; i < movesToTake; i++) {
+                const move = result.path[i];
+                let dx = 0, dy = 0, orientation = 2;
+                switch (move) {
+                    case 'w': dx = 0; dy = -1; orientation = 1; break;
+                    case 's': dx = 0; dy = 1; orientation = 2; break;
+                    case 'a': dx = -1; dy = 0; orientation = 3; break;
+                    case 'd': dx = 1; dy = 0; orientation = 4; break;
                 }
-
-                this.stepCount++;
-                this.itemCounts.hint--;
-                this.updateUI();
-
-                if (this.currentMap.isWin()) {
-                    this.isGameOver = true;
-                    this.showWinAnimation(() => this.onExit(this.currentLevelIndex));
-                }
+                this.moveQueue.push({ dx, dy, orientation });
             }
+            this.itemCounts.hint--;
+            progressManager.setItemCounts(this.itemCounts);
+            this.updateUI();
         } else {
             alert('此局无解，建议重置或撤销！');
         }
@@ -297,6 +330,7 @@ export class GameController {
         if (this.itemCounts.plus <= 0 || !this.currentMap) return;
         this.stepLimit += 5;
         this.itemCounts.plus--;
+        progressManager.setItemCounts(this.itemCounts);
         
         if (this.isGameOver && this.stepCount < this.stepLimit && !this.currentMap.isDeadlock()) {
             this.isGameOver = false;
@@ -319,6 +353,7 @@ export class GameController {
             }
             this.stepCount--;
             this.itemCounts.undo--;
+            progressManager.setItemCounts(this.itemCounts);
             this.lastMoveTime = 0; // Reset animation to snap to previous position
             this.updateUI();
         }
@@ -352,6 +387,11 @@ export class GameController {
         const solver = new AStarSolver(this.currentMap);
         const result = solver.solve(10000);
         this.stepLimit = (result.status === 'solved' && result.path ? result.path.length : 20) + 15;
+        
+        // Hardcode Level 5 (index 4)
+        if (index === 4) {
+            this.stepLimit = 52;
+        }
 
         this.scene.setInitialAnchor(this.currentMap);
         this.updateUI();
@@ -486,7 +526,10 @@ export class GameController {
                     overlay.remove();
                     this.currentOverlay = null;
                 }
-                if (!this.isDestroyed) callback();
+                if (!this.isDestroyed) {
+                    progressManager.completeLevel(this.currentLevelIndex);
+                    callback();
+                }
             }, 150);
         }, 500);
     }

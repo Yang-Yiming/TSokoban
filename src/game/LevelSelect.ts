@@ -4,13 +4,19 @@ import { MAP_DATA } from './mapData';
 import { showThemeDialog } from '../ui/themeDialog';
 import { showSettingsDialog } from '../ui/settingsDialog';
 import { themeManager } from '../theme';
+import { progressManager } from '../progress';
 
 export class LevelSelect {
     private canvas: HTMLCanvasElement;
     private ctx: CanvasRenderingContext2D;
     private catImg: HTMLImageElement;
+    private chestImg: HTMLImageElement;
     private currentCatImgPath: string = '';
+    private currentChestImgPath: string = '';
+    private isChestOpening: boolean = false;
     private uiOverlay: HTMLElement | null = null;
+    private messageEl: HTMLElement | null = null;
+    private messageTimeout: any = null;
     private chunks: Map<string, Int8Array> = new Map();
     private catX: number = 0;
     private catY: number = 0;
@@ -40,6 +46,7 @@ export class LevelSelect {
     private WATER = -3;
     private ROCK = -2;
     private CHEST = -1;
+    private readonly LEVEL_SPACING = 6;
     
     private deepBlue = "#4c6e78";
     private blue = "#5d9798";
@@ -78,13 +85,22 @@ export class LevelSelect {
         this.catImg.style.zIndex = '10';
         this.catImg.style.display = 'block';
         container.appendChild(this.catImg);
+
+        this.chestImg = document.createElement('img');
+        this.chestImg.style.position = 'absolute';
+        this.chestImg.style.pointerEvents = 'none';
+        this.chestImg.style.imageRendering = 'pixelated';
+        this.chestImg.style.width = `${this.nodeWidth}px`;
+        this.chestImg.style.height = `${this.nodeWidth}px`;
+        this.chestImg.style.zIndex = '9';
+        this.chestImg.style.display = 'none';
+        container.appendChild(this.chestImg);
         
         this.onLevelSelect = onLevelSelect;
         this.onBack = onBack;
         
         // Initial cat position
-        const levelSpacing = 10;
-        this.catX = initialLevelIndex * levelSpacing;
+        this.catX = initialLevelIndex * this.LEVEL_SPACING;
         this.catY = myRand(initialLevelIndex, 777, 0, -4, 4);
         
         this.anchorX = 800 / 2 - this.catX * this.nodeWidth - this.nodeWidth / 2;
@@ -118,7 +134,7 @@ export class LevelSelect {
                 const targetY = this.catY + dy;
                 const tile = this.getTileAt(targetX, targetY);
                 
-                if (tile !== this.WATER && tile !== this.ROCK) {
+                if (tile !== this.WATER && tile !== this.ROCK && tile !== this.CHEST) {
                     this.startMove(targetX, targetY);
                 } else {
                     this.draw(); // Just update direction
@@ -185,7 +201,7 @@ export class LevelSelect {
             }
 
             const tile = this.getTileAt(tileX, tileY);
-            if (tile !== this.WATER && tile !== this.ROCK) {
+            if (tile !== this.WATER && tile !== this.ROCK && tile !== this.CHEST) {
                 this.startMove(tileX, tileY);
             }
         });
@@ -221,17 +237,63 @@ export class LevelSelect {
 
         if (this.isMoving) {
             this.moveProgress += dt / this.currentMoveDuration;
+            
+            // Check if leaving chest vicinity during move
+            const currentX = this.moveStartX + (this.moveTargetX - this.moveStartX) * this.moveProgress;
+            const currentY = this.moveStartY + (this.moveTargetY - this.moveStartY) * this.moveProgress;
+            this.checkMessageAutoHide(currentX, currentY);
+
             if (this.moveProgress >= 1) {
                 this.catX = this.moveTargetX;
                 this.catY = this.moveTargetY;
                 this.moveProgress = 0;
                 this.isMoving = false;
+                this.checkChestInteraction();
             }
         }
 
         this.updateCamera();
         this.draw();
         requestAnimationFrame(this.animate.bind(this));
+    }
+
+    private getChestPos() {
+        const level16Index = 15;
+        const x = level16Index * this.LEVEL_SPACING + 2;
+        const y = myRand(level16Index, 777, 0, -4, 4);
+        return { x, y };
+    }
+
+    private checkChestInteraction() {
+        const { x: chestX, y: chestY } = this.getChestPos();
+
+        // Check if cat is adjacent to chest
+        const dx = Math.abs(this.catX - chestX);
+        const dy = Math.abs(this.catY - chestY);
+
+        if ((dx === 1 && dy === 0) || (dx === 0 && dy === 1)) {
+            const level16Completed = progressManager.isLevelCompleted(15);
+            const chestOpened = progressManager.isChestOpened();
+
+            if (!chestOpened && !this.isChestOpening) {
+                if (level16Completed) {
+                    // Start opening animation
+                    this.isChestOpening = true;
+                    // Force a source reset to ensure gif plays from start
+                    this.currentChestImgPath = ''; 
+                    this.draw(); 
+                    setTimeout(() => {
+                        progressManager.openChest();
+                        this.isChestOpening = false;
+                        this.draw();
+                    }, 500);
+                } else {
+                    const screenX = this.anchorX + chestX * this.nodeWidth + this.nodeWidth / 2;
+                    const screenY = this.anchorY + chestY * this.nodeWidth - 10;
+                    this.showMessage('没钥匙...', screenX, screenY);
+                }
+            }
+        }
     }
 
     private updateCamera() {
@@ -289,7 +351,10 @@ export class LevelSelect {
             '/assets/images/player_cat/cat_stand_front.gif',
             '/assets/images/player_cat/cat_run.gif',
             '/assets/images/player_cat/cat_run_back.gif',
-            '/assets/images/player_cat/cat_run_front.gif'
+            '/assets/images/player_cat/cat_run_front.gif',
+            '/assets/images/treasure_closed.png',
+            '/assets/images/treasure_open.gif',
+            '/assets/images/treasure_opened.png'
         ];
 
         const promises = imagePaths.map(path => {
@@ -311,23 +376,37 @@ export class LevelSelect {
     }
 
     private init() {
+        this.checkChestInteraction();
         this.draw();
     }
 
     private getInitialTileState(x: number, y: number): number {
         // 1. Level placement (Deterministic but scattered)
-        const levelSpacing = 10; 
-        const index = Math.round(x / levelSpacing);
-        const isLevelColumn = x % levelSpacing === 0 && x >= 0 && index < MAP_DATA.length;
+        const index = Math.round(x / this.LEVEL_SPACING);
+        let isLevelColumn = x % this.LEVEL_SPACING === 0 && x >= 0 && index < MAP_DATA.length;
+        
+        // Logic: 1-15 (0-14) always accessible. 16+ (15+) only if 1-15 are completed.
+        if (isLevelColumn && index >= 15) {
+            if (!progressManager.allLevelsCompleted(14)) {
+                isLevelColumn = false;
+            }
+        }
+
         const targetY = isLevelColumn ? myRand(index, 777, 0, -4, 4) : 999;
         
         if (isLevelColumn && y === targetY) {
             return index + 1;
         }
 
+        // Treasure Chest next to Level 16 (index 15)
+        const { x: chestX, y: chestY } = this.getChestPos();
+        if (x === chestX && y === chestY) {
+            return this.CHEST;
+        }
+
         // 2. Dryness Field calculation (Find the actual nearest level)
-        const nearestIndex = Math.max(0, Math.min(MAP_DATA.length - 1, Math.round(x / levelSpacing)));
-        const levelX = nearestIndex * levelSpacing;
+        const nearestIndex = Math.max(0, Math.min(MAP_DATA.length - 1, Math.round(x / this.LEVEL_SPACING)));
+        const levelX = nearestIndex * this.LEVEL_SPACING;
         const levelY = myRand(nearestIndex, 777, 0, -4, 4);
         
         const dx = Math.abs(x - levelX);
@@ -522,10 +601,11 @@ export class LevelSelect {
         const itemBar = document.createElement('div');
         itemBar.className = 'ui-item-bar';
         itemBar.style.pointerEvents = 'auto';
+        const currentItems = progressManager.getItemCounts();
         const items = [
-            { id: 'hint', img: 'hint.png', count: 3 },
-            { id: 'plus', img: 'plus.png', count: 3 },
-            { id: 'undo', img: 'withdraw.png', count: 3 }
+            { id: 'hint', img: 'hint.png', count: currentItems.hint },
+            { id: 'plus', img: 'plus.png', count: currentItems.plus },
+            { id: 'undo', img: 'withdraw.png', count: currentItems.undo }
         ];
 
         items.forEach(item => {
@@ -541,6 +621,55 @@ export class LevelSelect {
             itemBar.appendChild(group);
         });
         this.uiOverlay.appendChild(itemBar);
+
+        // Message element
+        this.messageEl = document.createElement('div');
+        this.messageEl.style.position = 'absolute';
+        this.messageEl.style.color = 'white';
+        this.messageEl.style.fontSize = '16px';
+        this.messageEl.style.fontFamily = 'Pixel';
+        this.messageEl.style.textShadow = '1px 1px 2px rgba(0,0,0,0.8)';
+        this.messageEl.style.pointerEvents = 'none';
+        this.messageEl.style.opacity = '0';
+        this.messageEl.style.transition = 'opacity 0.3s ease';
+        this.messageEl.style.zIndex = '100';
+        this.uiOverlay.appendChild(this.messageEl);
+    }
+
+    private showMessage(text: string, x: number, y: number) {
+        if (!this.messageEl) return;
+        if (this.messageTimeout) clearTimeout(this.messageTimeout);
+
+        this.messageEl.innerText = text;
+        this.messageEl.style.left = `${x}px`;
+        this.messageEl.style.top = `${y}px`;
+        this.messageEl.style.transform = 'translateX(-50%)';
+        this.messageEl.style.opacity = '1';
+        this.messageTimeout = setTimeout(() => {
+            if (this.messageEl) this.messageEl.style.opacity = '0';
+            this.messageTimeout = null;
+        }, 2000);
+    }
+
+    private hideMessage() {
+        if (!this.messageEl || this.messageEl.style.opacity === '0') return;
+        this.messageEl.style.opacity = '0';
+        if (this.messageTimeout) {
+            clearTimeout(this.messageTimeout);
+            this.messageTimeout = null;
+        }
+    }
+
+    private checkMessageAutoHide(x: number, y: number) {
+        const { x: chestX, y: chestY } = this.getChestPos();
+
+        const dx = Math.abs(x - chestX);
+        const dy = Math.abs(y - chestY);
+
+        // If distance > 1.2 (to allow some buffer during movement), hide message
+        if (dx > 1.2 || dy > 1.2) {
+            this.hideMessage();
+        }
     }
 
     public draw() {
@@ -609,6 +738,34 @@ export class LevelSelect {
 
         // 3. Draw Cat
         this.drawCat();
+
+        // 4. Draw Chest
+        this.drawChest();
+    }
+
+    private drawChest() {
+        const { x: chestX, y: chestY } = this.getChestPos();
+
+        const screenX = this.anchorX + chestX * this.nodeWidth;
+        const screenY = this.anchorY + chestY * this.nodeWidth;
+
+        let imgPath = '/assets/images/treasure_closed.png';
+        const chestOpened = progressManager.isChestOpened();
+
+        if (chestOpened) {
+            imgPath = '/assets/images/treasure_opened.png';
+        } else if (this.isChestOpening) {
+            imgPath = '/assets/images/treasure_open.gif';
+        }
+
+        if (this.currentChestImgPath !== imgPath) {
+            this.currentChestImgPath = imgPath;
+            this.chestImg.src = imgPath;
+        }
+
+        this.chestImg.style.left = `${screenX}px`;
+        this.chestImg.style.top = `${screenY}px`;
+        this.chestImg.style.display = 'block';
     }
 
     private drawCat() {
@@ -708,6 +865,7 @@ export class LevelSelect {
             this.uiOverlay.remove();
         }
         this.catImg.remove();
+        this.chestImg.remove();
         this.canvas.remove();
     }
 }

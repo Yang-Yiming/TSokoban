@@ -622,3 +622,47 @@ canvas {
   cursor: pointer;
   padding: 5px 20px;
 }
+
+.settings-vbox {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  width: 350px;
+}
+
+.settings-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 18px;
+  color: #55371d;
+}
+
+.settings-row input[type="text"] {
+  width: 100px;
+  font-family: 'Pixel';
+  border: 1px solid #55371d;
+  background: rgba(255, 255, 255, 0.5);
+  padding: 2px 5px;
+}
+
+.settings-row button {
+  font-family: 'Pixel';
+  background: #f0d0a0;
+  border: 2px solid #55371d;
+  color: #55371d;
+  padding: 5px 10px;
+  cursor: pointer;
+}
+
+.settings-row button:hover {
+  background: #e0b080;
+}
+
+.settings-section-title {
+  font-size: 20px;
+  color: #55371d;
+  border-bottom: 1px solid #55371d;
+  padding-bottom: 5px;
+  margin-bottom: 5px;
+}
