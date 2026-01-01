@@ -5,6 +5,7 @@ import { showThemeDialog } from './ui/themeDialog';
 import { createDialog } from './ui/dialog';
 import { showSettingsDialog } from './ui/settingsDialog';
 import { settingsManager } from './settings';
+import { progressManager } from './progress';
 
 export class Menu {
   private app: HTMLElement;
@@ -181,7 +182,7 @@ export class Menu {
       this.handleStartClick(startBtn);
     });
 
-    this.createIconBtn('login-btn', 'login', 150, () => this.showLoginDialog());
+    this.createIconBtn('login-btn', 'login', 150, () => this.showSaveDialog());
     this.createIconBtn('settings-btn', 'settings', 80, () => this.showSettingsDialog());
     this.createIconBtn('theme-btn', 'theme', 220, () => this.showThemeDialog());
   }
@@ -210,43 +211,55 @@ export class Menu {
     btn.addEventListener('click', onClick);
   }
 
-  private showLoginDialog() {
-    const { paper } = createDialog(this.app, 'Login');
+  private showSaveDialog() {
+    const { paper } = createDialog(this.app, '存档管理');
     
     const vbox = document.createElement('div');
-    vbox.className = 'login-vbox';
+    vbox.className = 'settings-vbox';
     
-    const usernameGroup = this.createInputGroup('Username', 'text');
-    const passwordGroup = this.createInputGroup('Password', 'password');
-    
-    const buttons = document.createElement('div');
-    buttons.className = 'login-buttons';
-    
-    const loginBtn = document.createElement('button');
-    loginBtn.innerText = 'Login';
-    const registerBtn = document.createElement('button');
-    registerBtn.innerText = 'Register';
-    
-    buttons.appendChild(loginBtn);
-    buttons.appendChild(registerBtn);
-    
-    vbox.appendChild(usernameGroup);
-    vbox.appendChild(passwordGroup);
-    vbox.appendChild(buttons);
+    const saveButtonsRow = document.createElement('div');
+    saveButtonsRow.className = 'settings-row';
+    saveButtonsRow.style.justifyContent = 'space-around';
+    saveButtonsRow.style.marginTop = '20px';
+
+    const exportBtn = document.createElement('button');
+    exportBtn.innerText = '导出存档';
+    exportBtn.onclick = () => {
+      const data = progressManager.exportSave();
+      navigator.clipboard.writeText(data).then(() => {
+        alert('存档已复制到剪贴板');
+      });
+    };
+
+    const importBtn = document.createElement('button');
+    importBtn.innerText = '导入存档';
+    importBtn.onclick = () => {
+      const data = prompt('请粘贴存档代码:');
+      if (data && progressManager.importSave(data)) {
+        alert('存档导入成功，请刷新页面');
+        window.location.reload();
+      } else if (data) {
+        alert('存档导入失败，请检查代码是否正确');
+      }
+    };
+
+    const clearBtn = document.createElement('button');
+    clearBtn.innerText = '清空存档';
+    clearBtn.style.color = 'red';
+    clearBtn.onclick = () => {
+      if (confirm('确定要清空所有存档吗？此操作不可撤销！')) {
+        progressManager.clearSave();
+        alert('存档已清空，请刷新页面');
+        window.location.reload();
+      }
+    };
+
+    saveButtonsRow.appendChild(exportBtn);
+    saveButtonsRow.appendChild(importBtn);
+    saveButtonsRow.appendChild(clearBtn);
+    vbox.appendChild(saveButtonsRow);
     
     paper.appendChild(vbox);
-  }
-
-  private createInputGroup(labelText: string, type: string) {
-    const group = document.createElement('div');
-    group.className = 'input-group';
-    const label = document.createElement('label');
-    label.innerText = labelText;
-    const input = document.createElement('input');
-    input.type = type;
-    group.appendChild(label);
-    group.appendChild(input);
-    return group;
   }
 
   private showSettingsDialog() {

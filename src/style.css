@@ -339,52 +339,6 @@ canvas {
   height: 100%;
 }
 
-/* Login Dialog Styles */
-.login-vbox {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  width: 300px;
-}
-
-.input-group {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.input-group label {
-  font-size: 25px;
-  width: 120px;
-}
-
-.input-group input {
-  flex: 1;
-  background: transparent;
-  border: 2px solid #55371d;
-  color: #55371d;
-  font-family: 'Pixel';
-  font-size: 20px;
-  padding: 5px;
-  width: 150px;
-}
-
-.login-buttons {
-  display: flex;
-  gap: 10px;
-  margin-top: 10px;
-}
-
-.login-buttons button {
-  background: transparent;
-  border: 2px solid #55371d;
-  color: #55371d;
-  font-family: 'Pixel';
-  font-size: 15px;
-  cursor: pointer;
-  padding: 5px 10px;
-}
-
 /* Settings Dialog Styles */
 .settings-vbox {
   display: flex;
