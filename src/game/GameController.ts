@@ -463,24 +463,28 @@ export class GameController {
             switch (e.key) {
                 case 'ArrowUp':
                 case 'w':
+                case 'k':
                     newOrientation = 1;
                     dx = 0; dy = -1;
                     moveResult = this.currentMap.movePlayer(dx, dy);
                     break;
                 case 'ArrowDown':
                 case 's':
+                case 'j':
                     newOrientation = 2;
                     dx = 0; dy = 1;
                     moveResult = this.currentMap.movePlayer(dx, dy);
                     break;
                 case 'ArrowLeft':
                 case 'a':
+                case 'h':
                     newOrientation = 3;
                     dx = -1; dy = 0;
                     moveResult = this.currentMap.movePlayer(dx, dy);
                     break;
                 case 'ArrowRight':
                 case 'd':
+                case 'l':
                     newOrientation = 4;
                     dx = 1; dy = 0;
                     moveResult = this.currentMap.movePlayer(dx, dy);

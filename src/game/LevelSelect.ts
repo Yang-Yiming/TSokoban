@@ -144,13 +144,12 @@ export class LevelSelect {
             }
             
             const key = e.key.toLowerCase();
-            const isWASD = ['w', 'a', 's', 'd'].includes(key);
+            const isMovementKey = ['w', 'a', 's', 'd', 'h', 'j', 'k', 'l'].includes(key)
+                || e.key.startsWith('Arrow');
 
-            if (isWASD && this.isMoving && this.movePath.length > 0) {
+            if (isMovementKey && this.isMoving && this.movePath.length > 0) {
                 // Interrupt pathfinding move
                 this.movePath = [];
-                // We let the current tile move finish, or we could snap it.
-                // Snapping might be jarring, so let's just clear the path.
             }
 
             if (this.isMoving) return;
@@ -158,11 +157,11 @@ export class LevelSelect {
             let dx = 0;
             let dy = 0;
             let newDir: typeof this.catDir = this.catDir;
-            
-            if (key === 'w') { dy = -1; newDir = 'back'; }
-            else if (key === 's') { dy = 1; newDir = 'front'; }
-            else if (key === 'a') { dx = -1; newDir = 'left'; }
-            else if (key === 'd') { dx = 1; newDir = 'right'; }
+
+            if (key === 'w' || key === 'k' || e.key === 'ArrowUp') { dy = -1; newDir = 'back'; }
+            else if (key === 's' || key === 'j' || e.key === 'ArrowDown') { dy = 1; newDir = 'front'; }
+            else if (key === 'a' || key === 'h' || e.key === 'ArrowLeft') { dx = -1; newDir = 'left'; }
+            else if (key === 'd' || key === 'l' || e.key === 'ArrowRight') { dx = 1; newDir = 'right'; }
             else if (e.key === 'Enter') {
                 this.tryEnterLevel(this.catX, this.catY);
                 return;

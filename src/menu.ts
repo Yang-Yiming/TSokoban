@@ -15,9 +15,12 @@ export class Menu {
   private cloudSpeeds: number[] = [0.25, 0.1, 0.2, 0.3, 0.5, -0.7];
   private box: HTMLImageElement | null = null;
   private cat: HTMLImageElement | null = null;
+  private boxX: number = 400;
   private boxY: number = 0;
-  private boxV: number = 0;
-  private boxA: number = 0.15;
+  private boxV: number = 0;       // px/ms
+  private boxVx: number = 0;      // px/ms
+  private boxA: number = 0.001;   // gravity, px/ms²
+  private boxLastTime: number = 0;
   private catX: number = 50;
   private catY: number = 0;
   private catV: number = 0;
@@ -120,13 +123,17 @@ export class Menu {
     this.box.src = '/assets/images/box_2d.png';
     this.box.id = 'box';
     this.box.draggable = false;
-    this.box.style.left = '400px';
+    this.boxX = 400;
+    this.box.style.left = `${this.boxX}px`;
     this.boxY = 0;
     this.app.appendChild(this.box);
 
     this.box.addEventListener('mousedown', (e) => {
       e.preventDefault();
       this.isDragging = true;
+      this.boxVx = 0;
+      this.boxV = 0;
+      this.boxLastTime = performance.now();
       this.box!.style.cursor = 'grabbing';
     });
 
@@ -139,16 +146,26 @@ export class Menu {
         const rect = this.app.getBoundingClientRect();
         const x = e.clientX - rect.left - 25;
         const y = e.clientY - rect.top - 25;
-        this.box.style.left = `${x}px`;
+        const dx = x - this.boxX;
+        const dy = y - this.boxY;
+        const now = performance.now();
+        const dt = now - this.boxLastTime;
+        if (dt > 0) {
+          this.boxVx = dx / dt;  // px/ms
+          this.boxV = dy / dt;
+        }
+        this.boxLastTime = now;
+        this.boxX = x;
         this.boxY = y;
+        this.box.style.left = `${x}px`;
         this.box.style.top = `${y}px`;
-        this.boxV = 0;
       }
     });
 
     window.addEventListener('mouseup', () => {
       if (this.isDragging) {
         this.isDragging = false;
+        this.boxLastTime = performance.now();
         this.box!.style.cursor = 'grab';
       }
     });
@@ -423,6 +440,7 @@ export class Menu {
   }
 
   private startAnimation() {
+    this.boxLastTime = performance.now();
     const animate = () => {
       // Clouds
       for (let i = 0; i < this.clouds.length; i++) {
@@ -436,20 +454,54 @@ export class Menu {
         this.clouds[i].style.left = `${this.cloudPositions[i]}px`;
       }
 
-      // Box Gravity
+      // Box Physics
       if (!this.isDragging && this.box) {
         const groundY = 600 - 100;
-        if (this.boxY < groundY) {
-          this.boxV += this.boxA;
-          this.boxY += this.boxV;
+        const boxSize = 50;
+        const wallBounce = 0.7;
+        const maxSpeed = 1.0; // px/ms
+        const now = performance.now();
+        const dt = now - this.boxLastTime;
+        this.boxLastTime = now;
+
+        if (dt > 0 && dt < 200) { // skip huge gaps (e.g. tab switch)
+          // Clamp speed
+          this.boxVx = Math.max(-maxSpeed, Math.min(maxSpeed, this.boxVx));
+          this.boxV = Math.max(-maxSpeed, Math.min(maxSpeed, this.boxV));
+
+          // Horizontal: move + friction (exponential decay)
+          this.boxX += this.boxVx * dt;
+          this.boxVx *= Math.pow(0.998, dt);
+          if (Math.abs(this.boxVx) < 0.001) this.boxVx = 0;
+
+          // Bounce off left/right edges
+          if (this.boxX < 0) {
+            this.boxX = 0;
+            this.boxVx = -this.boxVx * wallBounce;
+          } else if (this.boxX > 800 - boxSize) {
+            this.boxX = 800 - boxSize;
+            this.boxVx = -this.boxVx * wallBounce;
+          }
+
+          // Vertical: gravity + move
+          this.boxV += this.boxA * dt;
+          this.boxY += this.boxV * dt;
+
+          // Bounce off top
+          if (this.boxY < 0) {
+            this.boxY = 0;
+            this.boxV = -this.boxV * wallBounce;
+          }
+
+          // Hit ground: stop
           if (this.boxY >= groundY) {
             this.boxY = groundY;
             this.boxV = 0;
+            this.boxVx = 0;
           }
-        } else {
-          this.boxY = groundY;
-          this.boxV = 0;
         }
+
+        this.box.style.left = `${this.boxX}px`;
         this.box.style.top = `${this.boxY}px`;
       }
 
