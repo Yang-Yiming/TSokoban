@@ -305,8 +305,8 @@ export class Menu {
   private showModeButtons() {
     const modes = [
       { text: '经典模式', top: 270 },
-      { text: '无尽模式', top: 320 },
-      { text: '双人模式', top: 370 }
+      // { text: '无尽模式', top: 320 },
+      { text: '双人模式', top: 320 }
     ];
 
     modes.forEach((mode) => {

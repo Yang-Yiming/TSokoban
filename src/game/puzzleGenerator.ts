@@ -74,7 +74,7 @@ export function generatePuzzle(
     const params = getDifficultyParams(difficulty, rng);
 
     // Try multiple attempts to generate a valid puzzle
-    for (let attempt = 0; attempt < 20; attempt++) {
+    for (let attempt = 0; attempt < 40; attempt++) {
         const result = tryGenerate(rng, params, difficulty);
         if (result) {
             return {
@@ -89,14 +89,16 @@ export function generatePuzzle(
         }
     }
 
-    // Fallback: return a trivial 1-box puzzle
+    // Fallback: return a simple 2-box puzzle
     return {
         data: [
             [1, 1, 1, 1, 1],
-            [1, 4, 2, 8, 1],
+            [1, 0, 8, 0, 1],
+            [1, 4, 2, 0, 1],
+            [1, 0, 2, 8, 1],
             [1, 1, 1, 1, 1],
         ],
-        meta: { worldX, worldY, difficulty, optimalSteps: 1 }
+        meta: { worldX, worldY, difficulty, optimalSteps: 3 }
     };
 }
 
@@ -118,31 +120,25 @@ interface DifficultyParams {
     minSolutionSteps: number;
     maxSolutionSteps: number;
     reverseMoves: number;
+    minNodes: number;       // minimum A* expanded nodes (complexity floor)
+    maxNodes: number;       // maximum A* expanded nodes (complexity ceiling)
 }
 
 function getDifficultyParams(difficulty: number, rng: SeededRandom): DifficultyParams {
     switch (difficulty) {
         case 1:
             return {
-                width: rng.nextInt(5, 6),
-                height: rng.nextInt(5, 6),
-                numBoxes: 1,
-                numInternalWalls: rng.nextInt(1, 3),
-                minSolutionSteps: 3,
-                maxSolutionSteps: 15,
-                reverseMoves: 30,
-            };
-        case 2:
-            return {
-                width: rng.nextInt(5, 6),
-                height: rng.nextInt(5, 6),
+                width: rng.nextInt(5, 7),
+                height: rng.nextInt(5, 7),
                 numBoxes: 2,
                 numInternalWalls: rng.nextInt(2, 4),
-                minSolutionSteps: 8,
-                maxSolutionSteps: 25,
+                minSolutionSteps: 6,
+                maxSolutionSteps: 20,
                 reverseMoves: 50,
+                minNodes: 20,
+                maxNodes: 3000,
             };
-        case 3:
+        case 2:
             return {
                 width: rng.nextInt(6, 7),
                 height: rng.nextInt(6, 7),
@@ -150,28 +146,46 @@ function getDifficultyParams(difficulty: number, rng: SeededRandom): DifficultyP
                 numInternalWalls: rng.nextInt(3, 5),
                 minSolutionSteps: 10,
                 maxSolutionSteps: 30,
-                reverseMoves: 80,
+                reverseMoves: 70,
+                minNodes: 40,
+                maxNodes: 5000,
             };
-        case 4:
+        case 3:
             return {
-                width: rng.nextInt(6, 7),
-                height: rng.nextInt(6, 7),
-                numBoxes: 3,
+                width: rng.nextInt(6, 8),
+                height: rng.nextInt(6, 8),
+                numBoxes: rng.nextInt(2, 3),
                 numInternalWalls: rng.nextInt(3, 6),
                 minSolutionSteps: 12,
                 maxSolutionSteps: 35,
                 reverseMoves: 100,
+                minNodes: 60,
+                maxNodes: 7000,
             };
-        case 5:
-        default:
+        case 4:
             return {
                 width: rng.nextInt(7, 8),
                 height: rng.nextInt(7, 8),
-                numBoxes: rng.nextInt(3, 4),
+                numBoxes: 3,
                 numInternalWalls: rng.nextInt(4, 7),
                 minSolutionSteps: 15,
                 maxSolutionSteps: 40,
                 reverseMoves: 120,
+                minNodes: 100,
+                maxNodes: 8000,
+            };
+        case 5:
+        default:
+            return {
+                width: rng.nextInt(7, 9),
+                height: rng.nextInt(7, 9),
+                numBoxes: rng.nextInt(3, 4),
+                numInternalWalls: rng.nextInt(5, 8),
+                minSolutionSteps: 18,
+                maxSolutionSteps: 50,
+                reverseMoves: 150,
+                minNodes: 150,
+                maxNodes: 9000,
             };
     }
 }
@@ -301,6 +315,9 @@ function tryGenerate(
 
     const steps = result.path.length;
     if (steps < params.minSolutionSteps || steps > params.maxSolutionSteps) return null;
+
+    // Filter by A* search complexity (deterministic cross-platform metric)
+    if (result.nodesExpanded < params.minNodes || result.nodesExpanded > params.maxNodes) return null;
 
     return { data: bestGrid, optimalSteps: steps };
 }

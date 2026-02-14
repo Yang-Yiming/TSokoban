@@ -39,6 +39,7 @@ class Node {
 export interface SolverResult {
     status: 'solved' | 'unsolvable' | 'limit-reached';
     path?: string;
+    nodesExpanded: number;
 }
 
 export class AStarSolver {
@@ -115,7 +116,7 @@ export class AStarSolver {
 
         while (openList.length > 0) {
             if (nodesCount >= maxNodes) {
-                return { status: 'limit-reached' };
+                return { status: 'limit-reached', nodesExpanded: nodesCount };
             }
 
             // Simple priority queue: find min f
@@ -132,7 +133,7 @@ export class AStarSolver {
 
             // Check win
             if (current.state.boxes.every(b => this.goals.has(b))) {
-                return { status: 'solved', path: this.reconstructPath(current) };
+                return { status: 'solved', path: this.reconstructPath(current), nodesExpanded: nodesCount };
             }
 
             // Try moves
@@ -184,7 +185,7 @@ export class AStarSolver {
             }
         }
 
-        return { status: 'unsolvable' };
+        return { status: 'unsolvable', nodesExpanded: nodesCount };
     }
 
     private reconstructPath(node: Node): string {
