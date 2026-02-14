@@ -26,7 +26,8 @@ Entry point: `src/main.ts` → instantiates `Menu` which owns the top-level UI.
   - `GameController` — orchestrates input handling, move queue/animation, UI updates; tracks all event listeners for cleanup on destroy
   - `GameScene` — dual-canvas renderer (map canvas + UI overlay) with a camera system that follows the player and supports drag-to-pan
   - `AStarSolver` — pathfinding for the hint system
-  - `LevelSelect` — level selection UI
+  - `LevelSelect` — world map with chunk-based terrain generation, A* pathfinding, and biome-aware rendering
+  - `biomes` — biome system defining 4 terrain types (grassland, lake, highlands, dark forest) with per-biome colors, water/rock densities, sprites, and boundary blending via 60×60 tile units
   - `puzzleGenerator` — seed-based procedural level generation
   - `mapData` — predefined level definitions
   - `types` — `Coordinate`, `TileType`, `TILE_MASK`, `Equipment`

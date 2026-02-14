@@ -332,7 +332,7 @@ export class Menu {
     });
   }
 
-  private showLevelSelect(initialLevelIndex: number = 0) {
+  private showLevelSelect(initialLevelIndex: number = 0, initialWorldPos?: {x: number, y: number}) {
     // Hide menu elements
     Array.from(this.app.children).forEach(child => {
       if (child instanceof HTMLElement) {
@@ -355,7 +355,7 @@ export class Menu {
           child.style.display = '';
         }
       });
-    }, initialLevelIndex);
+    }, initialLevelIndex, initialWorldPos);
   }
 
   private startGame(levelIndex: number) {
@@ -416,7 +416,7 @@ export class Menu {
     const controller = new GameController(gameContainer, () => {
       controller.destroy();
       gameContainer.remove();
-      this.showLevelSelect(0);
+      this.showLevelSelect(0, { x: meta.worldX, y: meta.worldY });
     });
 
     controller.loadGeneratedLevel(data, meta);

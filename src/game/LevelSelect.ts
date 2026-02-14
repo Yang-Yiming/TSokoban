@@ -69,7 +69,7 @@ export class LevelSelect {
 
     private generatedPuzzleCache: Map<string, { data: number[][], meta: GeneratedLevelMeta }> = new Map();
 
-    constructor(container: HTMLElement, onLevelSelect: (levelIndex: number, generatedData?: number[][], generatedMeta?: GeneratedLevelMeta) => void, onBack: () => void, initialLevelIndex: number = 0) {
+    constructor(container: HTMLElement, onLevelSelect: (levelIndex: number, generatedData?: number[][], generatedMeta?: GeneratedLevelMeta) => void, onBack: () => void, initialLevelIndex: number = 0, initialWorldPos?: {x: number, y: number}) {
         this.canvas = document.createElement('canvas');
         this.canvas.width = 800;
         this.canvas.height = 600;
@@ -127,9 +127,14 @@ export class LevelSelect {
         this.onBack = onBack;
         
         // Initial cat position
-        this.catX = initialLevelIndex * this.LEVEL_SPACING;
-        this.catY = myRand(initialLevelIndex, 777, 0, -4, 4);
-        
+        if (initialWorldPos) {
+            this.catX = initialWorldPos.x;
+            this.catY = initialWorldPos.y;
+        } else {
+            this.catX = initialLevelIndex * this.LEVEL_SPACING;
+            this.catY = myRand(initialLevelIndex, 777, 0, -4, 4);
+        }
+
         this.anchorX = 800 / 2 - this.catX * this.nodeWidth - this.nodeWidth / 2;
         this.anchorY = 600 / 2 - this.catY * this.nodeWidth - this.nodeWidth / 2;
 
