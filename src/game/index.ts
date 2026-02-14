@@ -6,3 +6,4 @@ export * from './GameController';
 export * from './mapData';
 export * from './LevelSelect';
 export * from './puzzleGenerator';
+export * from './biomes';

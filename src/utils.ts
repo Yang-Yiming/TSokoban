@@ -24,3 +24,10 @@ export function randColor(dx: number, dy: number): string {
   const B = themeColor.b + myRand(dx, dy, 3, -10, 10);
   return `rgb(${R}, ${G}, ${B})`;
 }
+
+export function randColorBiome(dx: number, dy: number, baseColor: { r: number; g: number; b: number }, variation: number): string {
+  const R = baseColor.r + myRand(dx, dy, 1, -variation, variation);
+  const G = baseColor.g + myRand(dx, dy, 2, -variation, variation);
+  const B = baseColor.b + myRand(dx, dy, 3, -variation, variation);
+  return `rgb(${R}, ${G}, ${B})`;
+}
