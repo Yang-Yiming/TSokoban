@@ -464,6 +464,14 @@ canvas {
   text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
 }
 
+.win-stars {
+  font-size: 36px;
+  color: #f0c864;
+  margin: 5px 0;
+  letter-spacing: 8px;
+  text-shadow: 1px 1px 3px rgba(0,0,0,0.4);
+}
+
 .lose-overlay {
   position: absolute;
   top: 0;

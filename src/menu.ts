@@ -1,5 +1,6 @@
 import { myRand, randColor } from './utils';
-import { GameController, MAP_DATA, LevelSelect } from './game';
+import { GameController, LevelSelect } from './game';
+import type { GeneratedLevelMeta } from './game';
 import { themeManager } from './theme';
 import { showThemeDialog } from './ui/themeDialog';
 import { createDialog } from './ui/dialog';
@@ -339,9 +340,13 @@ export class Menu {
       }
     });
 
-    const levelSelect = new LevelSelect(this.app, (levelIndex) => {
+    const levelSelect = new LevelSelect(this.app, (levelIndex, generatedData?, generatedMeta?) => {
       levelSelect.destroy();
-      this.startGame(levelIndex);
+      if (generatedData && generatedMeta) {
+        this.startGeneratedGame(generatedData, generatedMeta);
+      } else {
+        this.startGame(levelIndex);
+      }
     }, () => {
       levelSelect.destroy();
       // Show menu elements again
@@ -374,7 +379,7 @@ export class Menu {
     const controller = new GameController(gameContainer, (lastLevelIndex) => {
       controller.destroy();
       gameContainer.remove();
-      
+
       if (lastLevelIndex !== undefined) {
         this.showLevelSelect(lastLevelIndex);
       } else {
@@ -388,6 +393,33 @@ export class Menu {
     });
 
     controller.loadLevel(levelIndex);
+  }
+
+  private startGeneratedGame(data: number[][], meta: GeneratedLevelMeta) {
+    // Hide menu elements
+    Array.from(this.app.children).forEach(child => {
+      if (child instanceof HTMLElement && child.id !== 'game-container') {
+        child.style.display = 'none';
+      }
+    });
+
+    const gameContainer = document.createElement('div');
+    gameContainer.id = 'game-container';
+    gameContainer.style.position = 'absolute';
+    gameContainer.style.top = '0';
+    gameContainer.style.left = '0';
+    gameContainer.style.width = '100%';
+    gameContainer.style.height = '100%';
+    gameContainer.style.zIndex = '200';
+    this.app.appendChild(gameContainer);
+
+    const controller = new GameController(gameContainer, () => {
+      controller.destroy();
+      gameContainer.remove();
+      this.showLevelSelect(0);
+    });
+
+    controller.loadGeneratedLevel(data, meta);
   }
 
   private startAnimation() {

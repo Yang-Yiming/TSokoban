@@ -2,6 +2,7 @@ import { SokobanMap } from './SokobanMap';
 import { GameScene } from './GameScene';
 import { MAP_DATA } from './mapData';
 import { AStarSolver } from './AStarSolver';
+import type { GeneratedLevelMeta } from './puzzleGenerator';
 
 import { showThemeDialog } from '../ui/themeDialog';
 import { showSettingsDialog } from '../ui/settingsDialog';
@@ -12,6 +13,10 @@ export class GameController {
     private currentMap: SokobanMap | null = null;
     private scene: GameScene;
     private currentLevelIndex: number = 0;
+    private isGeneratedLevel: boolean = false;
+    private generatedLevelData: number[][] | null = null;
+    private generatedLevelMeta: GeneratedLevelMeta | null = null;
+    private optimalSteps: number = 0;
     private stepCount: number = 0;
     private stepLimit: number = 0;
     private itemCounts = progressManager.getItemCounts();
@@ -144,22 +149,30 @@ export class GameController {
 
             if (this.currentMap.isWin()) {
                 this.isGameOver = true;
-                this.moveQueue = []; // Clear queue on win
+                this.moveQueue = [];
                 this.showWinAnimation(() => this.onExit(this.currentLevelIndex));
             } else if (this.stepCount >= this.stepLimit) {
                 this.isGameOver = true;
                 this.moveQueue = [];
-                this.showLoseAnimation('晕', '好累……', () => this.loadLevel(this.currentLevelIndex));
+                this.showLoseAnimation('晕', '好累……', () => this.reloadCurrentLevel());
             } else if (this.isDeadlockDetected()) {
                 this.isGameOver = true;
                 this.moveQueue = [];
-                this.showLoseAnimation('菜', '有的猫活着……', () => this.loadLevel(this.currentLevelIndex));
+                this.showLoseAnimation('菜', '有的猫活着……', () => this.reloadCurrentLevel());
             }
             return true;
         } else {
-            this.playerOrientation = orientation; // Still update orientation even if blocked
-            this.moveQueue = []; // Clear queue if blocked
+            this.playerOrientation = orientation;
+            this.moveQueue = [];
             return false;
+        }
+    }
+
+    private reloadCurrentLevel() {
+        if (this.isGeneratedLevel && this.generatedLevelData && this.generatedLevelMeta) {
+            this.loadGeneratedLevel(this.generatedLevelData, this.generatedLevelMeta);
+        } else {
+            this.loadLevel(this.currentLevelIndex);
         }
     }
 
@@ -290,7 +303,12 @@ export class GameController {
 
     private updateUI() {
         if (!this.uiElements) return;
-        this.uiElements.levelText.innerText = `关卡 ${this.currentLevelIndex + 1}`;
+        if (this.isGeneratedLevel && this.generatedLevelMeta) {
+            const d = this.generatedLevelMeta.difficulty;
+            this.uiElements.levelText.innerText = `探索 ${'★'.repeat(d)}`;
+        } else {
+            this.uiElements.levelText.innerText = `关卡 ${this.currentLevelIndex + 1}`;
+        }
         this.uiElements.stepText.innerText = `移动步数: ${this.stepCount}`;
         this.uiElements.limitText.innerText = `步数限制: ${this.stepLimit}`;
         this.uiElements.itemHintText.innerText = `x${this.itemCounts.hint}`;
@@ -361,7 +379,7 @@ export class GameController {
 
     loadLevel(index: number) {
         if (index < 0 || index >= MAP_DATA.length) return;
-        
+
         if (this.currentOverlay) {
             this.currentOverlay.remove();
             this.currentOverlay = null;
@@ -371,7 +389,7 @@ export class GameController {
         const fadeOverlay = document.createElement('div');
         fadeOverlay.className = 'fade-in-overlay';
         this.scene.getCanvas().parentElement?.appendChild(fadeOverlay);
-        
+
         // Trigger fade out of the black screen
         setTimeout(() => {
             fadeOverlay.classList.add('hide');
@@ -379,19 +397,52 @@ export class GameController {
         }, 50);
 
         this.currentLevelIndex = index;
+        this.isGeneratedLevel = false;
+        this.generatedLevelData = null;
+        this.generatedLevelMeta = null;
         this.currentMap = new SokobanMap(MAP_DATA[index]);
         this.stepCount = 0;
         this.isGameOver = false;
-        
+
         // Calculate step limit using A*
         const solver = new AStarSolver(this.currentMap);
         const result = solver.solve(10000);
-        this.stepLimit = (result.status === 'solved' && result.path ? result.path.length : 20) + 15;
-        
+        this.optimalSteps = (result.status === 'solved' && result.path) ? result.path.length : 20;
+        this.stepLimit = this.optimalSteps + 15;
+
         // Hardcode Level 5 (index 4)
         if (index === 4) {
             this.stepLimit = 52;
         }
+
+        this.scene.setInitialAnchor(this.currentMap);
+        this.updateUI();
+    }
+
+    loadGeneratedLevel(data: number[][], meta: GeneratedLevelMeta) {
+        if (this.currentOverlay) {
+            this.currentOverlay.remove();
+            this.currentOverlay = null;
+        }
+
+        const fadeOverlay = document.createElement('div');
+        fadeOverlay.className = 'fade-in-overlay';
+        this.scene.getCanvas().parentElement?.appendChild(fadeOverlay);
+        setTimeout(() => {
+            fadeOverlay.classList.add('hide');
+            setTimeout(() => fadeOverlay.remove(), 1000);
+        }, 50);
+
+        this.isGeneratedLevel = true;
+        this.generatedLevelData = data;
+        this.generatedLevelMeta = meta;
+        this.currentLevelIndex = -1;
+        this.currentMap = new SokobanMap(data);
+        this.stepCount = 0;
+        this.isGameOver = false;
+
+        this.optimalSteps = meta.optimalSteps || 20;
+        this.stepLimit = this.optimalSteps + 15;
 
         this.scene.setInitialAnchor(this.currentMap);
         this.updateUI();
@@ -435,7 +486,7 @@ export class GameController {
                     moveResult = this.currentMap.movePlayer(dx, dy);
                     break;
                 case 'r':
-                    this.loadLevel(this.currentLevelIndex);
+                    this.reloadCurrentLevel();
                     return;
                 case 'Escape':
                     this.destroy();
@@ -463,10 +514,10 @@ export class GameController {
                     this.showWinAnimation(() => this.onExit(this.currentLevelIndex));
                 } else if (this.stepCount >= this.stepLimit) {
                     this.isGameOver = true;
-                    this.showLoseAnimation('晕', '好累……', () => this.loadLevel(this.currentLevelIndex));
+                    this.showLoseAnimation('晕', '好累……', () => this.reloadCurrentLevel());
                 } else if (this.isDeadlockDetected()) {
                     this.isGameOver = true;
-                    this.showLoseAnimation('菜', '有的猫活着……', () => this.loadLevel(this.currentLevelIndex));
+                    this.showLoseAnimation('菜', '有的猫活着……', () => this.reloadCurrentLevel());
                 }
             }
         };
@@ -492,8 +543,18 @@ export class GameController {
         return false;
     }
 
+    private getStarRating(): number {
+        if (this.optimalSteps <= 0) return 1;
+        const ratio = this.stepCount / this.optimalSteps;
+        if (ratio <= 1.0) return 3;
+        if (ratio <= 1.5) return 2;
+        return 1;
+    }
+
     private showWinAnimation(callback: () => void) {
         if (this.isDestroyed) return;
+        const stars = this.getStarRating();
+        const starText = '★'.repeat(stars) + '☆'.repeat(3 - stars);
         const overlay = document.createElement('div');
         this.currentOverlay = overlay;
         overlay.className = 'win-overlay';
@@ -501,6 +562,7 @@ export class GameController {
             <div class="win-content">
                 <div class="win-line"></div>
                 <div class="win-text">完成</div>
+                <div class="win-stars">${starText}</div>
                 <div class="win-line"></div>
             </div>
         `;
@@ -514,7 +576,7 @@ export class GameController {
             }
             overlay.classList.add('show');
         }, 10);
-        
+
         setTimeout(() => {
             if (this.isDestroyed || this.currentOverlay !== overlay) {
                 overlay.remove();
@@ -527,11 +589,13 @@ export class GameController {
                     this.currentOverlay = null;
                 }
                 if (!this.isDestroyed) {
-                    progressManager.completeLevel(this.currentLevelIndex);
+                    if (!this.isGeneratedLevel) {
+                        progressManager.completeLevel(this.currentLevelIndex);
+                    }
                     callback();
                 }
             }, 150);
-        }, 500);
+        }, 700);
     }
 
     private showLoseAnimation(text: string, subtext: string, callback: () => void) {

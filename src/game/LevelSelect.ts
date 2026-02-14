@@ -4,7 +4,10 @@ import { showThemeDialog } from '../ui/themeDialog';
 import { showSettingsDialog } from '../ui/settingsDialog';
 import { themeManager } from '../theme';
 import { progressManager } from '../progress';
+import { settingsManager } from '../settings';
+import { generatePuzzle } from './puzzleGenerator';
 import type { Equipment } from './types';
+import type { GeneratedLevelMeta } from './puzzleGenerator';
 
 export class LevelSelect {
     private canvas: HTMLCanvasElement;
@@ -49,13 +52,15 @@ export class LevelSelect {
     private WATER = -3;
     private ROCK = -2;
     private CHEST = -1;
+    private readonly GENERATED_LEVEL = 50;
     private readonly LEVEL_SPACING = 6;
+    private readonly GENERATED_LEVEL_CELL = 10; // cell size for generated level placement
     
     private deepBlue = "#4c6e78";
     private blue = "#5d9798";
     private lightBlue = "#77ad9d";
 
-    private onLevelSelect: (levelIndex: number) => void;
+    private onLevelSelect: (levelIndex: number, generatedData?: number[][], generatedMeta?: GeneratedLevelMeta) => void;
     private onBack: () => void;
     private boundKeyDown: (e: KeyboardEvent) => void;
 
@@ -65,7 +70,9 @@ export class LevelSelect {
     private mouseDownX = 0;
     private mouseDownY = 0;
 
-    constructor(container: HTMLElement, onLevelSelect: (levelIndex: number) => void, onBack: () => void, initialLevelIndex: number = 0) {
+    private generatedPuzzleCache: Map<string, { data: number[][], meta: GeneratedLevelMeta }> = new Map();
+
+    constructor(container: HTMLElement, onLevelSelect: (levelIndex: number, generatedData?: number[][], generatedMeta?: GeneratedLevelMeta) => void, onBack: () => void, initialLevelIndex: number = 0) {
         this.canvas = document.createElement('canvas');
         this.canvas.width = 800;
         this.canvas.height = 600;
@@ -155,8 +162,7 @@ export class LevelSelect {
             else if (key === 'a') { dx = -1; newDir = 'left'; }
             else if (key === 'd') { dx = 1; newDir = 'right'; }
             else if (e.key === 'Enter') {
-                const val = this.getTileAt(this.catX, this.catY);
-                if (val > 0) this.onLevelSelect(val - 1);
+                this.tryEnterLevel(this.catX, this.catY);
                 return;
             }
 
@@ -237,8 +243,7 @@ export class LevelSelect {
             const tileY = Math.floor((mouseY - this.anchorY) / this.nodeWidth);
             
             if (tileX === this.catX && tileY === this.catY) {
-                const val = this.getTileAt(tileX, tileY);
-                if (val > 0) this.onLevelSelect(val - 1);
+                this.tryEnterLevel(tileX, tileY);
                 return;
             }
 
@@ -272,7 +277,7 @@ export class LevelSelect {
         this.moveTargetX = tx;
         this.moveTargetY = ty;
         this.movePath = path;
-        
+
         // Proportional duration, but capped for very long distances
         this.currentMoveDuration = Math.min(dist * this.MOVE_DURATION_PER_TILE, 800);
 
@@ -281,6 +286,39 @@ export class LevelSelect {
         } else {
             this.catDir = dy > 0 ? 'front' : 'back';
         }
+    }
+
+    private tryEnterLevel(tileX: number, tileY: number) {
+        const val = this.getTileAt(tileX, tileY);
+        if (val > 0 && val < this.GENERATED_LEVEL) {
+            // Handcrafted level
+            this.onLevelSelect(val - 1);
+        } else if (val === this.GENERATED_LEVEL) {
+            // Generated level - generate puzzle from world coordinates
+            const key = `${tileX},${tileY}`;
+            let cached = this.generatedPuzzleCache.get(key);
+            if (!cached) {
+                const seed = parseInt(settingsManager.currentSettings.mapSeed) || 0;
+                const difficulty = this.getDifficultyAt(tileX, tileY);
+                const result = generatePuzzle(tileX, tileY, seed, difficulty);
+                if (result) {
+                    cached = result;
+                    this.generatedPuzzleCache.set(key, result);
+                }
+            }
+            if (cached) {
+                this.onLevelSelect(-1, cached.data, cached.meta);
+            }
+        }
+    }
+
+    private getDifficultyAt(x: number, y: number): number {
+        const dist = Math.sqrt(x * x + y * y);
+        if (dist < 30) return 1;
+        if (dist < 60) return 2;
+        if (dist < 100) return 3;
+        if (dist < 150) return 4;
+        return 5;
     }
 
     private animate(time: number) {
@@ -558,7 +596,7 @@ export class LevelSelect {
         // 1. Level placement (Deterministic but scattered)
         const index = Math.round(x / this.LEVEL_SPACING);
         let isLevelColumn = x % this.LEVEL_SPACING === 0 && x >= 0 && index < MAP_DATA.length;
-        
+
         // Logic: 1-15 (0-14) always accessible. 16+ (15+) only if 1-15 are completed.
         if (isLevelColumn && index >= 15) {
             if (!progressManager.allLevelsCompleted(14)) {
@@ -567,7 +605,7 @@ export class LevelSelect {
         }
 
         const targetY = isLevelColumn ? myRand(index, 777, 0, -4, 4) : 999;
-        
+
         if (isLevelColumn && y === targetY) {
             return index + 1;
         }
@@ -578,14 +616,14 @@ export class LevelSelect {
             return this.CHEST;
         }
 
+        // 1b. Generated level placement (cell-based, beyond handcrafted area)
+        const genLevel = this.getGeneratedLevelAt(x, y);
+        if (genLevel) {
+            return this.GENERATED_LEVEL;
+        }
+
         // 2. Dryness Field calculation (Find the actual nearest level)
-        const nearestIndex = Math.max(0, Math.min(MAP_DATA.length - 1, Math.round(x / this.LEVEL_SPACING)));
-        const levelX = nearestIndex * this.LEVEL_SPACING;
-        const levelY = myRand(nearestIndex, 777, 0, -4, 4);
-        
-        const dx = Math.abs(x - levelX);
-        const dy = Math.abs(y - levelY);
-        const chebyshevDist = Math.max(dx, dy);
+        const chebyshevDist = this.getDistToNearestLevel(x, y);
 
         // 3. Super Large Lake Zones (Rare)
         const lZoneX = Math.floor(x / 24);
@@ -604,9 +642,9 @@ export class LevelSelect {
 
         // Apply Dryness Field
         if (chebyshevDist <= 1) {
-            waterProb = 0; 
+            waterProb = 0;
         } else if (chebyshevDist === 2) {
-            waterProb *= 0.4; 
+            waterProb *= 0.4;
         }
 
         if (waterProb > 0 && myRand(x, y, 0, 0, 100) < waterProb) {
@@ -615,11 +653,63 @@ export class LevelSelect {
 
         // 6. Rocks/Bushes
         let rockProb = 10;
-        if (chebyshevDist <= 1) rockProb = 0; 
-        
+        if (chebyshevDist <= 1) rockProb = 0;
+
         if (myRand(x, y, 1, 0, 100) < rockProb) return this.ROCK;
-        
+
         return 0;
+    }
+
+    /** Check if a generated level node should be placed at (x, y) */
+    private getGeneratedLevelAt(x: number, y: number): boolean {
+        const cell = this.GENERATED_LEVEL_CELL;
+        const cellX = Math.floor(x / cell);
+        const cellY = Math.floor(y / cell);
+
+        // Only place generated levels outside the handcrafted level corridor
+        const handcraftedMaxX = MAP_DATA.length * this.LEVEL_SPACING + 5;
+        const inHandcraftedZone = x >= -3 && x <= handcraftedMaxX && y >= -8 && y <= 8;
+        if (inHandcraftedZone) return false;
+
+        // Each cell has a 40% chance of containing a generated level
+        if (myRand(cellX, cellY, 555, 0, 100) >= 40) return false;
+
+        // Deterministic position within cell
+        const nodeX = cellX * cell + myRand(cellX, cellY, 111, 1, cell - 2);
+        const nodeY = cellY * cell + myRand(cellX, cellY, 222, 1, cell - 2);
+
+        return x === nodeX && y === nodeY;
+    }
+
+    /** Get Chebyshev distance to nearest level node (handcrafted or generated) */
+    private getDistToNearestLevel(x: number, y: number): number {
+        // Check nearest handcrafted level
+        let minDist = 999;
+        const nearestIndex = Math.max(0, Math.min(MAP_DATA.length - 1, Math.round(x / this.LEVEL_SPACING)));
+        const levelX = nearestIndex * this.LEVEL_SPACING;
+        const levelY = myRand(nearestIndex, 777, 0, -4, 4);
+        const dx1 = Math.abs(x - levelX);
+        const dy1 = Math.abs(y - levelY);
+        minDist = Math.max(dx1, dy1);
+
+        // Check nearest generated level (check surrounding cells)
+        const cell = this.GENERATED_LEVEL_CELL;
+        const cellX = Math.floor(x / cell);
+        const cellY = Math.floor(y / cell);
+        for (let cy = cellY - 1; cy <= cellY + 1; cy++) {
+            for (let cx = cellX - 1; cx <= cellX + 1; cx++) {
+                const handcraftedMaxX2 = MAP_DATA.length * this.LEVEL_SPACING + 5;
+                const nodeX = cx * cell + myRand(cx, cy, 111, 1, cell - 2);
+                const nodeY = cy * cell + myRand(cx, cy, 222, 1, cell - 2);
+                const inHandcrafted = nodeX >= -3 && nodeX <= handcraftedMaxX2 && nodeY >= -8 && nodeY <= 8;
+                if (inHandcrafted) continue;
+                if (myRand(cx, cy, 555, 0, 100) >= 40) continue;
+                const d = Math.max(Math.abs(x - nodeX), Math.abs(y - nodeY));
+                if (d < minDist) minDist = d;
+            }
+        }
+
+        return minDist;
     }
 
     private getTileAt(x: number, y: number): number {
@@ -883,8 +973,18 @@ export class LevelSelect {
                         const img = this.images.get('/assets/images/bush/lily3.png');
                         if (img) this.ctx.drawImage(img, screenX, screenY, this.nodeWidth, this.nodeWidth);
                     }
+                } else if (val === this.GENERATED_LEVEL) {
+                    // Generated level node - draw with different style
+                    const img = this.images.get('/assets/images/level.png');
+                    if (img) this.ctx.drawImage(img, screenX, screenY, this.nodeWidth, this.nodeWidth);
+
+                    const difficulty = this.getDifficultyAt(dx, dy);
+                    this.ctx.fillStyle = "rgba(255, 255, 255, 0.25)";
+                    this.ctx.font = "16px Pixel";
+                    this.ctx.textAlign = "center";
+                    this.ctx.fillText('★'.repeat(difficulty), screenX + this.nodeWidth / 2, screenY + this.nodeWidth / 2 + 5);
                 } else if (val > 0) {
-                    // Level node
+                    // Handcrafted level node
                     const img = this.images.get('/assets/images/level.png');
                     if (img) this.ctx.drawImage(img, screenX, screenY, this.nodeWidth, this.nodeWidth);
                     

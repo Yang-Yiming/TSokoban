@@ -23,13 +23,13 @@ export class Coordinate {
     }
 }
 
-export enum TileType {
-    Empty = 0,
-    Wall = 1,
-    Box = 2,
-    Player = 4,
-    Goal = 8,
-}
+export const TileType = {
+    Empty: 0,
+    Wall: 1,
+    Box: 2,
+    Player: 4,
+    Goal: 8,
+} as const;
 
 export type Equipment = 'none' | 'boat' | 'wing';
 
