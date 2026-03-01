@@ -9,7 +9,7 @@
  * Run:  bun run solver_update_tmp/compare.ts
  */
 
-import { SokobanMap } from '../src/game/SokobanMap';
+import { SokobanMap } from '../../src/game/SokobanMap';
 import { AStarSolverV2 } from './AStarSolverV2';
 import { AStarSolverV3 } from './AStarSolverV3';
 import { AStarSolverV4 } from './AStarSolverV4';

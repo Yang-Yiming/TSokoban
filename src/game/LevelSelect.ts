@@ -305,6 +305,10 @@ export class LevelSelect {
                 if (result) {
                     cached = result;
                     this.generatedPuzzleCache.set(key, result);
+                } else {
+                    // Generation failed — erase the tile so it no longer appears on the map
+                    this.setTileAt(tileX, tileY, 0);
+                    return;
                 }
             }
             if (cached) {
@@ -724,6 +728,17 @@ export class LevelSelect {
         const lx = ((x % this.CHUNK_WIDTH) + this.CHUNK_WIDTH) % this.CHUNK_WIDTH;
         const ly = ((y % this.CHUNK_HEIGHT) + this.CHUNK_HEIGHT) % this.CHUNK_HEIGHT;
         return chunk[ly * this.CHUNK_WIDTH + lx];
+    }
+
+    private setTileAt(x: number, y: number, value: number): void {
+        const cx = Math.floor(x / this.CHUNK_WIDTH);
+        const cy = Math.floor(y / this.CHUNK_HEIGHT);
+        const key = `${cx},${cy}`;
+        const chunk = this.chunks.get(key);
+        if (!chunk) return;
+        const lx = ((x % this.CHUNK_WIDTH) + this.CHUNK_WIDTH) % this.CHUNK_WIDTH;
+        const ly = ((y % this.CHUNK_HEIGHT) + this.CHUNK_HEIGHT) % this.CHUNK_HEIGHT;
+        chunk[ly * this.CHUNK_WIDTH + lx] = value;
     }
 
     private generateChunk(cx: number, cy: number): Int8Array {
