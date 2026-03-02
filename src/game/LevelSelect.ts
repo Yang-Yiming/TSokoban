@@ -65,7 +65,7 @@ export class LevelSelect {
     private readonly LEVEL_SPACING = 6;
     private readonly GENERATED_LEVEL_CELL = 10; // cell size for generated level placement
     
-    private onLevelSelect: (levelIndex: number, generatedData?: number[][], generatedMeta?: GeneratedLevelMeta, specialLevelId?: string) => void;
+    private onLevelSelect: (levelIndex: number, generatedData?: number[][], generatedMeta?: GeneratedLevelMeta, specialLevelId?: string, returnWorldPos?: {x: number, y: number}) => void;
     private onBack: () => void;
     private boundKeyDown: (e: KeyboardEvent) => void;
 
@@ -77,7 +77,7 @@ export class LevelSelect {
 
     private generatedPuzzleCache: Map<string, { data: number[][], meta: GeneratedLevelMeta }> = new Map();
 
-    constructor(container: HTMLElement, onLevelSelect: (levelIndex: number, generatedData?: number[][], generatedMeta?: GeneratedLevelMeta, specialLevelId?: string) => void, onBack: () => void, initialLevelIndex: number = 0, initialWorldPos?: {x: number, y: number}) {
+    constructor(container: HTMLElement, onLevelSelect: (levelIndex: number, generatedData?: number[][], generatedMeta?: GeneratedLevelMeta, specialLevelId?: string, returnWorldPos?: {x: number, y: number}) => void, onBack: () => void, initialLevelIndex: number = 0, initialWorldPos?: {x: number, y: number}) {
         this.canvas = document.createElement('canvas');
         this.canvas.width = 800;
         this.canvas.height = 600;
@@ -174,7 +174,7 @@ export class LevelSelect {
                 this.tryEnterLevel(this.catX, this.catY);
                 return;
             } else if (key === 'p') {
-                this.onLevelSelect(-1, undefined, undefined, 'special_hard_1');
+                this.onLevelSelect(-1, undefined, undefined, 'special_hard_1', { x: this.catX, y: this.catY });
                 return;
             }
 
@@ -309,7 +309,7 @@ export class LevelSelect {
             const mapSeed = parseInt(settingsManager.currentSettings.mapSeed, 10) || 0;
             const specialLevelId = resolveSpecialLevelIdAt(tileX, tileY, mapSeed);
             if (specialLevelId) {
-                this.onLevelSelect(-1, undefined, undefined, specialLevelId);
+                this.onLevelSelect(-1, undefined, undefined, specialLevelId, { x: tileX, y: tileY });
             }
         } else if (val === this.GENERATED_LEVEL) {
             // Generated level - generate puzzle from world coordinates
@@ -546,6 +546,8 @@ export class LevelSelect {
     }
 
     private init() {
+        const mapSeed = parseInt(settingsManager.currentSettings.mapSeed, 10) || 0;
+        this.currentStructureZoneId = resolveStructureDiscoveryAt(this.catX, this.catY, mapSeed)?.id ?? null;
         this.checkChestInteraction();
         this.updateEquipmentUI();
         this.draw();

@@ -357,12 +357,12 @@ export class Menu {
       }
     });
 
-    const levelSelect = new LevelSelect(this.app, (levelIndex, generatedData?, generatedMeta?, specialLevelId?) => {
+    const levelSelect = new LevelSelect(this.app, (levelIndex, generatedData?, generatedMeta?, specialLevelId?, returnWorldPos?) => {
       levelSelect.destroy();
       if (generatedData && generatedMeta) {
         this.startGeneratedGame(generatedData, generatedMeta);
       } else if (specialLevelId) {
-        this.startSpecialGame(specialLevelId);
+        this.startSpecialGame(specialLevelId, returnWorldPos);
       } else {
         this.startGame(levelIndex);
       }
@@ -441,7 +441,7 @@ export class Menu {
     controller.loadGeneratedLevel(data, meta);
   }
 
-  private startSpecialGame(specialLevelId: string) {
+  private startSpecialGame(specialLevelId: string, returnWorldPos?: {x: number, y: number}) {
     Array.from(this.app.children).forEach(child => {
       if (child instanceof HTMLElement && child.id !== 'game-container') {
         child.style.display = 'none';
@@ -461,7 +461,7 @@ export class Menu {
     const controller = new GameController(gameContainer, () => {
       controller.destroy();
       gameContainer.remove();
-      this.showLevelSelect(0);
+      this.showLevelSelect(0, returnWorldPos);
     });
 
     controller.loadSpecialLevel(specialLevelId);
