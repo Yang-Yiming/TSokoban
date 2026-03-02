@@ -357,10 +357,12 @@ export class Menu {
       }
     });
 
-    const levelSelect = new LevelSelect(this.app, (levelIndex, generatedData?, generatedMeta?) => {
+    const levelSelect = new LevelSelect(this.app, (levelIndex, generatedData?, generatedMeta?, specialLevelId?) => {
       levelSelect.destroy();
       if (generatedData && generatedMeta) {
         this.startGeneratedGame(generatedData, generatedMeta);
+      } else if (specialLevelId) {
+        this.startSpecialGame(specialLevelId);
       } else {
         this.startGame(levelIndex);
       }
@@ -437,6 +439,32 @@ export class Menu {
     });
 
     controller.loadGeneratedLevel(data, meta);
+  }
+
+  private startSpecialGame(specialLevelId: string) {
+    Array.from(this.app.children).forEach(child => {
+      if (child instanceof HTMLElement && child.id !== 'game-container') {
+        child.style.display = 'none';
+      }
+    });
+
+    const gameContainer = document.createElement('div');
+    gameContainer.id = 'game-container';
+    gameContainer.style.position = 'absolute';
+    gameContainer.style.top = '0';
+    gameContainer.style.left = '0';
+    gameContainer.style.width = '100%';
+    gameContainer.style.height = '100%';
+    gameContainer.style.zIndex = '200';
+    this.app.appendChild(gameContainer);
+
+    const controller = new GameController(gameContainer, () => {
+      controller.destroy();
+      gameContainer.remove();
+      this.showLevelSelect(0);
+    });
+
+    controller.loadSpecialLevel(specialLevelId);
   }
 
   private startAnimation() {

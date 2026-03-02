@@ -57,7 +57,7 @@ export class LevelSelect {
     private readonly LEVEL_SPACING = 6;
     private readonly GENERATED_LEVEL_CELL = 10; // cell size for generated level placement
     
-    private onLevelSelect: (levelIndex: number, generatedData?: number[][], generatedMeta?: GeneratedLevelMeta) => void;
+    private onLevelSelect: (levelIndex: number, generatedData?: number[][], generatedMeta?: GeneratedLevelMeta, specialLevelId?: string) => void;
     private onBack: () => void;
     private boundKeyDown: (e: KeyboardEvent) => void;
 
@@ -69,7 +69,7 @@ export class LevelSelect {
 
     private generatedPuzzleCache: Map<string, { data: number[][], meta: GeneratedLevelMeta }> = new Map();
 
-    constructor(container: HTMLElement, onLevelSelect: (levelIndex: number, generatedData?: number[][], generatedMeta?: GeneratedLevelMeta) => void, onBack: () => void, initialLevelIndex: number = 0, initialWorldPos?: {x: number, y: number}) {
+    constructor(container: HTMLElement, onLevelSelect: (levelIndex: number, generatedData?: number[][], generatedMeta?: GeneratedLevelMeta, specialLevelId?: string) => void, onBack: () => void, initialLevelIndex: number = 0, initialWorldPos?: {x: number, y: number}) {
         this.canvas = document.createElement('canvas');
         this.canvas.width = 800;
         this.canvas.height = 600;
@@ -164,6 +164,9 @@ export class LevelSelect {
             else if (key === 'd' || key === 'l' || e.key === 'ArrowRight') { dx = 1; newDir = 'right'; }
             else if (e.key === 'Enter') {
                 this.tryEnterLevel(this.catX, this.catY);
+                return;
+            } else if (key === 'p') {
+                this.onLevelSelect(-1, undefined, undefined, 'special_hard_1');
                 return;
             }
 

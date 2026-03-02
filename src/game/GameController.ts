@@ -1,6 +1,6 @@
 import { SokobanMap } from './SokobanMap';
 import { GameScene } from './GameScene';
-import { MAP_DATA } from './mapData';
+import { MAP_DATA, SPECIAL_LEVEL_LIBRARY } from './mapData';
 import { AStarSolver } from './AStarSolver';
 import type { GeneratedLevelMeta } from './puzzleGenerator';
 
@@ -14,6 +14,8 @@ export class GameController {
     private scene: GameScene;
     private currentLevelIndex: number = 0;
     private isGeneratedLevel: boolean = false;
+    private isSpecialLevel: boolean = false;
+    private currentSpecialLevelId: string | null = null;
     private generatedLevelData: number[][] | null = null;
     private generatedLevelMeta: GeneratedLevelMeta | null = null;
     private optimalSteps: number = 0;
@@ -171,6 +173,8 @@ export class GameController {
     private reloadCurrentLevel() {
         if (this.isGeneratedLevel && this.generatedLevelData && this.generatedLevelMeta) {
             this.loadGeneratedLevel(this.generatedLevelData, this.generatedLevelMeta);
+        } else if (this.isSpecialLevel && this.currentSpecialLevelId) {
+            this.loadSpecialLevel(this.currentSpecialLevelId);
         } else {
             this.loadLevel(this.currentLevelIndex);
         }
@@ -306,6 +310,8 @@ export class GameController {
         if (this.isGeneratedLevel && this.generatedLevelMeta) {
             const d = this.generatedLevelMeta.difficulty;
             this.uiElements.levelText.innerText = `探索 ${'★'.repeat(d)}`;
+        } else if (this.isSpecialLevel && this.currentSpecialLevelId) {
+            this.uiElements.levelText.innerText = `特殊关卡 ${this.currentSpecialLevelId}`;
         } else {
             this.uiElements.levelText.innerText = `关卡 ${this.currentLevelIndex + 1}`;
         }
@@ -398,6 +404,8 @@ export class GameController {
 
         this.currentLevelIndex = index;
         this.isGeneratedLevel = false;
+        this.isSpecialLevel = false;
+        this.currentSpecialLevelId = null;
         this.generatedLevelData = null;
         this.generatedLevelMeta = null;
         this.currentMap = new SokobanMap(MAP_DATA[index]);
@@ -419,6 +427,43 @@ export class GameController {
         this.updateUI();
     }
 
+    loadSpecialLevel(specialLevelId: string) {
+        const entry = SPECIAL_LEVEL_LIBRARY[specialLevelId];
+        if (!entry) return;
+
+        if (this.currentOverlay) {
+            this.currentOverlay.remove();
+            this.currentOverlay = null;
+        }
+
+        const fadeOverlay = document.createElement('div');
+        fadeOverlay.className = 'fade-in-overlay';
+        this.scene.getCanvas().parentElement?.appendChild(fadeOverlay);
+
+        setTimeout(() => {
+            fadeOverlay.classList.add('hide');
+            setTimeout(() => fadeOverlay.remove(), 1000);
+        }, 50);
+
+        this.currentLevelIndex = -1;
+        this.isGeneratedLevel = false;
+        this.isSpecialLevel = true;
+        this.currentSpecialLevelId = specialLevelId;
+        this.generatedLevelData = null;
+        this.generatedLevelMeta = null;
+        this.currentMap = new SokobanMap(entry.data);
+        this.stepCount = 0;
+        this.isGameOver = false;
+
+        const solver = new AStarSolver(this.currentMap);
+        const result = solver.solve(10000);
+        this.optimalSteps = (result.status === 'solved' && result.path) ? result.path.length : 20;
+        this.stepLimit = this.optimalSteps + 15;
+
+        this.scene.setInitialAnchor(this.currentMap);
+        this.updateUI();
+    }
+
     loadGeneratedLevel(data: number[][], meta: GeneratedLevelMeta) {
         if (this.currentOverlay) {
             this.currentOverlay.remove();
@@ -434,6 +479,8 @@ export class GameController {
         }, 50);
 
         this.isGeneratedLevel = true;
+        this.isSpecialLevel = false;
+        this.currentSpecialLevelId = null;
         this.generatedLevelData = data;
         this.generatedLevelMeta = meta;
         this.currentLevelIndex = -1;
@@ -593,7 +640,7 @@ export class GameController {
                     this.currentOverlay = null;
                 }
                 if (!this.isDestroyed) {
-                    if (!this.isGeneratedLevel) {
+                    if (!this.isGeneratedLevel && !this.isSpecialLevel) {
                         progressManager.completeLevel(this.currentLevelIndex);
                     }
                     callback();
