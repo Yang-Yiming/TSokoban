@@ -316,7 +316,7 @@ export class GameController {
             this.uiElements.levelText.innerText = `关卡 ${this.currentLevelIndex + 1}`;
         }
         this.uiElements.stepText.innerText = `移动步数: ${this.stepCount}`;
-        this.uiElements.limitText.innerText = `步数限制: ${this.stepLimit}`;
+        this.uiElements.limitText.innerText = `步数限制: ${Number.isFinite(this.stepLimit) ? this.stepLimit : '∞'}`;
         this.uiElements.itemHintText.innerText = `x${this.itemCounts.hint}`;
         this.uiElements.itemPlusText.innerText = `x${this.itemCounts.plus}`;
         this.uiElements.itemUndoText.innerText = `x${this.itemCounts.undo}`;
@@ -415,8 +415,13 @@ export class GameController {
         // Calculate step limit using A*
         const solver = new AStarSolver(this.currentMap);
         const result = solver.solve(10000);
-        this.optimalSteps = (result.status === 'solved' && result.path) ? result.path.length : 20;
-        this.stepLimit = this.optimalSteps + 15;
+        if (result.status === 'solved' && result.path) {
+            this.optimalSteps = result.path.length;
+            this.stepLimit = this.optimalSteps + 15;
+        } else {
+            this.optimalSteps = 0;
+            this.stepLimit = Number.POSITIVE_INFINITY;
+        }
 
         // Hardcode Level 5 (index 4)
         if (index === 4) {
@@ -457,8 +462,13 @@ export class GameController {
 
         const solver = new AStarSolver(this.currentMap);
         const result = solver.solve(10000);
-        this.optimalSteps = (result.status === 'solved' && result.path) ? result.path.length : 20;
-        this.stepLimit = this.optimalSteps + 15;
+        if (result.status === 'solved' && result.path) {
+            this.optimalSteps = result.path.length;
+            this.stepLimit = this.optimalSteps + 15;
+        } else {
+            this.optimalSteps = 0;
+            this.stepLimit = Number.POSITIVE_INFINITY;
+        }
 
         this.scene.setInitialAnchor(this.currentMap);
         this.updateUI();
@@ -488,8 +498,13 @@ export class GameController {
         this.stepCount = 0;
         this.isGameOver = false;
 
-        this.optimalSteps = meta.optimalSteps || 20;
-        this.stepLimit = this.optimalSteps + 15;
+        if (typeof meta.optimalSteps === 'number') {
+            this.optimalSteps = meta.optimalSteps;
+            this.stepLimit = this.optimalSteps + 15;
+        } else {
+            this.optimalSteps = 0;
+            this.stepLimit = Number.POSITIVE_INFINITY;
+        }
 
         this.scene.setInitialAnchor(this.currentMap);
         this.updateUI();
