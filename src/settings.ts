@@ -1,10 +1,13 @@
 type SettingsChangeListener = (settings: Settings) => void;
 
+export type StructureDiscoveryPromptMode = 'always' | 'firstOnly';
+
 interface Settings {
   moveAnimDuration: number;
   volume: number;
   useAStar: boolean;
   mapSeed: string;
+  structureDiscoveryPromptMode: StructureDiscoveryPromptMode;
 }
 
 class SettingsManager {
@@ -12,7 +15,8 @@ class SettingsManager {
     moveAnimDuration: 150,
     volume: 50,
     useAStar: false,
-    mapSeed: '53'
+    mapSeed: '53',
+    structureDiscoveryPromptMode: 'always'
   };
   private listeners: SettingsChangeListener[] = [];
 

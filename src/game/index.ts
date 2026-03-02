@@ -7,3 +7,5 @@ export * from './mapData';
 export * from './LevelSelect';
 export * from './puzzleGenerator';
 export * from './biomes';
+export * from './worldStructures';
+export * from './structures';

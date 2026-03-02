@@ -9,6 +9,7 @@ export interface Progress {
     };
     chestOpened: boolean;
     equipment: Equipment;
+    discoveredStructures: string[];
 }
 
 class ProgressManager {
@@ -24,6 +25,7 @@ class ProgressManager {
                 if (!this.progress.itemCounts) this.progress.itemCounts = { hint: 3, plus: 3, undo: 3 };
                 if (this.progress.chestOpened === undefined) this.progress.chestOpened = false;
                 if (!this.progress.equipment) this.progress.equipment = 'none';
+                if (!this.progress.discoveredStructures) this.progress.discoveredStructures = [];
             } catch (e) {
                 this.progress = this.getDefaultProgress();
             }
@@ -37,7 +39,8 @@ class ProgressManager {
             completedLevels: [],
             itemCounts: { hint: 3, plus: 3, undo: 3 },
             chestOpened: false,
-            equipment: 'none'
+            equipment: 'none',
+            discoveredStructures: []
         };
     }
 
@@ -105,6 +108,17 @@ class ProgressManager {
     openChest() {
         this.progress.chestOpened = true;
         this.save();
+    }
+
+    hasDiscoveredStructure(structureId: string): boolean {
+        return this.progress.discoveredStructures.includes(structureId);
+    }
+
+    discoverStructure(structureId: string): boolean {
+        if (this.hasDiscoveredStructure(structureId)) return false;
+        this.progress.discoveredStructures.push(structureId);
+        this.save();
+        return true;
     }
 
     exportSave(): string {

@@ -7,8 +7,12 @@ import { progressManager } from '../progress';
 import { settingsManager } from '../settings';
 import { generatePuzzle } from './puzzleGenerator';
 import { getBiomeAt, getAllBiomeSpritesPaths } from './biomes';
+import { applyStructuresToGrid, registerStructure, resolveSpecialLevelIdAt, resolveStructureDiscoveryAt } from './worldStructures';
+import { lakeIslandStructure } from './structures';
 import type { Equipment } from './types';
 import type { GeneratedLevelMeta } from './puzzleGenerator';
+
+registerStructure(lakeIslandStructure);
 
 export class LevelSelect {
     private canvas: HTMLCanvasElement;
@@ -22,6 +26,9 @@ export class LevelSelect {
     private uiOverlay: HTMLElement | null = null;
     private messageEl: HTMLElement | null = null;
     private messageTimeout: any = null;
+    private structureDiscoverEl: HTMLElement | null = null;
+    private structureDiscoverTimeout: any = null;
+    private currentStructureZoneId: string | null = null;
     private chunks: Map<string, Int8Array> = new Map();
     private catX: number = 0;
     private catY: number = 0;
@@ -53,6 +60,7 @@ export class LevelSelect {
     private WATER = -3;
     private ROCK = -2;
     private CHEST = -1;
+    private SPECIAL_LEVEL = -4;
     private readonly GENERATED_LEVEL = 50;
     private readonly LEVEL_SPACING = 6;
     private readonly GENERATED_LEVEL_CELL = 10; // cell size for generated level placement
@@ -297,6 +305,12 @@ export class LevelSelect {
         if (val > 0 && val < this.GENERATED_LEVEL) {
             // Handcrafted level
             this.onLevelSelect(val - 1);
+        } else if (val === this.SPECIAL_LEVEL) {
+            const mapSeed = parseInt(settingsManager.currentSettings.mapSeed, 10) || 0;
+            const specialLevelId = resolveSpecialLevelIdAt(tileX, tileY, mapSeed);
+            if (specialLevelId) {
+                this.onLevelSelect(-1, undefined, undefined, specialLevelId);
+            }
         } else if (val === this.GENERATED_LEVEL) {
             // Generated level - generate puzzle from world coordinates
             const key = `${tileX},${tileY}`;
@@ -358,9 +372,55 @@ export class LevelSelect {
             }
         }
 
+        const currentX = this.isMoving
+            ? Math.round(this.moveStartX + (this.moveTargetX - this.moveStartX) * this.moveProgress)
+            : this.catX;
+        const currentY = this.isMoving
+            ? Math.round(this.moveStartY + (this.moveTargetY - this.moveStartY) * this.moveProgress)
+            : this.catY;
+        this.checkStructureDiscovery(currentX, currentY);
+
         this.updateCamera();
         this.draw();
         requestAnimationFrame(this.animate.bind(this));
+    }
+
+    private checkStructureDiscovery(tileX: number, tileY: number) {
+        const mapSeed = parseInt(settingsManager.currentSettings.mapSeed, 10) || 0;
+        const discovery = resolveStructureDiscoveryAt(tileX, tileY, mapSeed);
+        const zoneId = discovery?.id ?? null;
+
+        if (zoneId === this.currentStructureZoneId) return;
+        this.currentStructureZoneId = zoneId;
+
+        if (!discovery) return;
+
+        const promptMode = settingsManager.currentSettings.structureDiscoveryPromptMode;
+        if (promptMode === 'always') {
+            this.showStructureDiscover(discovery.name);
+            return;
+        }
+
+        if (progressManager.discoverStructure(discovery.id)) {
+            this.showStructureDiscover(discovery.name);
+        }
+    }
+
+    private showStructureDiscover(name: string) {
+        if (!this.structureDiscoverEl) return;
+        if (this.structureDiscoverTimeout) {
+            clearTimeout(this.structureDiscoverTimeout);
+            this.structureDiscoverTimeout = null;
+        }
+
+        this.structureDiscoverEl.innerText = name;
+        this.structureDiscoverEl.style.opacity = '1';
+
+        this.structureDiscoverTimeout = setTimeout(() => {
+            if (!this.structureDiscoverEl) return;
+            this.structureDiscoverEl.style.opacity = '0';
+            this.structureDiscoverTimeout = null;
+        }, 2000);
     }
 
     private getChestPos() {
@@ -794,8 +854,33 @@ export class LevelSelect {
             }
             grid = nextGrid;
         }
+
+        // 3. Apply world structures (post-CA)
+        const mapSeed = parseInt(settingsManager.currentSettings.mapSeed, 10) || 0;
+        const worldMinX = cx * this.CHUNK_WIDTH - this.HALO_SIZE;
+        const worldMinY = cy * this.CHUNK_HEIGHT - this.HALO_SIZE;
+
+        applyStructuresToGrid({
+            mapSeed,
+            chunkX: cx,
+            chunkY: cy,
+            chunkWidth: this.CHUNK_WIDTH,
+            chunkHeight: this.CHUNK_HEIGHT,
+            haloSize: this.HALO_SIZE,
+            fullWidth,
+            fullHeight,
+            worldMinX,
+            worldMinY,
+            tileValues: {
+                WATER: this.WATER,
+                ROCK: this.ROCK,
+                CHEST: this.CHEST,
+                GENERATED_LEVEL: this.GENERATED_LEVEL,
+                SPECIAL_LEVEL: this.SPECIAL_LEVEL
+            }
+        }, grid);
         
-        // 3. Extract center CHUNK_WIDTH x CHUNK_HEIGHT
+        // 4. Extract center CHUNK_WIDTH x CHUNK_HEIGHT
         const result = new Int8Array(this.CHUNK_WIDTH * this.CHUNK_HEIGHT);
         for (let y = 0; y < this.CHUNK_HEIGHT; y++) {
             for (let x = 0; x < this.CHUNK_WIDTH; x++) {
@@ -901,6 +986,21 @@ export class LevelSelect {
         this.messageEl.style.transition = 'opacity 0.3s ease';
         this.messageEl.style.zIndex = '100';
         this.uiOverlay.appendChild(this.messageEl);
+
+        this.structureDiscoverEl = document.createElement('div');
+        this.structureDiscoverEl.style.position = 'absolute';
+        this.structureDiscoverEl.style.left = '50%';
+        this.structureDiscoverEl.style.top = '50%';
+        this.structureDiscoverEl.style.transform = 'translate(-50%, -50%)';
+        this.structureDiscoverEl.style.color = 'white';
+        this.structureDiscoverEl.style.fontSize = '42px';
+        this.structureDiscoverEl.style.fontFamily = 'Pixel';
+        this.structureDiscoverEl.style.textShadow = '2px 2px 0 rgba(0,0,0,0.75)';
+        this.structureDiscoverEl.style.pointerEvents = 'none';
+        this.structureDiscoverEl.style.opacity = '0';
+        this.structureDiscoverEl.style.transition = 'opacity 0.25s ease';
+        this.structureDiscoverEl.style.zIndex = '120';
+        this.uiOverlay.appendChild(this.structureDiscoverEl);
     }
 
     private showMessage(text: string, x: number, y: number) {
@@ -1008,6 +1108,17 @@ export class LevelSelect {
                     this.ctx.font = "16px Pixel";
                     this.ctx.textAlign = "center";
                     this.ctx.fillText('★'.repeat(difficulty), screenX + this.nodeWidth / 2, screenY + this.nodeWidth / 2 + 5);
+                } else if (val === this.SPECIAL_LEVEL) {
+                    const img = this.images.get('/assets/images/level.png');
+                    if (img) this.ctx.drawImage(img, screenX, screenY, this.nodeWidth, this.nodeWidth);
+
+                    this.ctx.fillStyle = 'rgba(20, 20, 20, 0.65)';
+                    this.ctx.fillRect(screenX + 5, screenY + 5, this.nodeWidth - 10, this.nodeWidth - 10);
+
+                    this.ctx.fillStyle = 'rgba(255, 80, 80, 0.98)';
+                    this.ctx.font = '24px Pixel';
+                    this.ctx.textAlign = 'center';
+                    this.ctx.fillText('特', screenX + this.nodeWidth / 2, screenY + this.nodeWidth / 2 + 8);
                 } else if (val > 0) {
                     // Handcrafted level node
                     const img = this.images.get('/assets/images/level.png');
@@ -1190,6 +1301,10 @@ export class LevelSelect {
     public destroy() {
         window.removeEventListener('keydown', this.boundKeyDown);
         themeManager.removeListener(this.themeListener);
+        if (this.structureDiscoverTimeout) {
+            clearTimeout(this.structureDiscoverTimeout);
+            this.structureDiscoverTimeout = null;
+        }
         if (this.uiOverlay) {
             this.uiOverlay.remove();
         }

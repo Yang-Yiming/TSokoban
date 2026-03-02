@@ -1,0 +1,1 @@
+export { lakeIslandStructure } from './LakeIslandStructure';

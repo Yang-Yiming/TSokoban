@@ -53,6 +53,29 @@ export function showSettingsDialog(container: HTMLElement) {
   seedRow.appendChild(seedLabel);
   seedRow.appendChild(seedInput);
   vbox.appendChild(seedRow);
+
+  const structurePromptRow = document.createElement('div');
+  structurePromptRow.className = 'settings-row';
+  const structurePromptLabel = document.createElement('label');
+  structurePromptLabel.innerText = '特殊地形提示';
+  const structurePromptSelect = document.createElement('select');
+  const optionAlways = document.createElement('option');
+  optionAlways.value = 'always';
+  optionAlways.innerText = '每次遇到都提示';
+  const optionFirstOnly = document.createElement('option');
+  optionFirstOnly.value = 'firstOnly';
+  optionFirstOnly.innerText = '仅首次遇到提示';
+  structurePromptSelect.appendChild(optionAlways);
+  structurePromptSelect.appendChild(optionFirstOnly);
+  structurePromptSelect.value = settings.structureDiscoveryPromptMode;
+  structurePromptSelect.onchange = () => {
+    settingsManager.updateSettings({
+      structureDiscoveryPromptMode: structurePromptSelect.value as 'always' | 'firstOnly'
+    });
+  };
+  structurePromptRow.appendChild(structurePromptLabel);
+  structurePromptRow.appendChild(structurePromptSelect);
+  vbox.appendChild(structurePromptRow);
   
   paper.appendChild(vbox);
 }

@@ -334,7 +334,7 @@ const specialLevelEntries: SpecialLevelEntry[] = [
         ...HARD_SPECIAL_LEVELS.map((data, index) => ({
                 id: `special_hard_${index + 1}`,
                 difficulty: 'hard' as const,
-                tags: ['hard'],
+                tags: ['hard', 'lake_island'],
                 data
         }))
 ];
