@@ -1,9 +1,9 @@
 /**
- * compare.ts — side-by-side comparison of V2 / V3 / V4
+ * compare.ts — side-by-side comparison of V2 / F1 / F2
  *
  * Runs all three solvers on every level and prints:
  *   • Per-group average time & nodes for each solver
- *   • Speedup ratios (V3 vs V2, V4 vs V2, V4 vs V3)
+ *   • Speedup ratios (F1 vs V2, F2 vs V2, F2 vs F1)
  *   • Per-level summary showing if any solver differs in status
  *
  * Run:  bun run solver_update_tmp/compare.ts
@@ -11,8 +11,8 @@
 
 import { SokobanMap } from '../../src/game/SokobanMap';
 import { AStarSolverV2 } from './AStarSolverV2';
-import { AStarSolverV3 } from './AStarSolverV3';
-import { AStarSolverV4 } from './AStarSolverV4';
+import { AStarSolverF1 } from './AStarSolverF1';
+import { AStarSolverF2 } from './AStarSolverF2';
 import { GROUPS } from './levels';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -73,8 +73,8 @@ function run(factory: Factory, levelData: number[][]): RunResult {
 
 const SOLVERS: Array<{ label: string; factory: Factory }> = [
     { label: 'V2', factory: m => new AStarSolverV2(m) },
-    { label: 'V3', factory: m => new AStarSolverV3(m) },
-    { label: 'V4', factory: m => new AStarSolverV4(m) },
+    { label: 'F1', factory: m => new AStarSolverF1(m) },
+    { label: 'F2', factory: m => new AStarSolverF2(m) },
 ];
 
 // ─── Collect results ──────────────────────────────────────────────────────────
@@ -111,16 +111,16 @@ console.log(HDR_BIG);
 for (const { label, data } of allGroupData) {
     // ── Per-level table (only show deviating statuses) ────────────────────────
     const hasDiff = data.some(({ results }) => {
-        const [r2, r3, r4] = results;
-        return r2.status !== r3.status || r2.status !== r4.status;
+        const [r2, f1, f2] = results;
+        return r2.status !== f1.status || r2.status !== f2.status;
     });
 
     if (hasDiff) {
         console.log(`\n  [${label}] status differences:`);
         for (const { lvl, results } of data) {
-            const [r2, r3, r4] = results;
-            if (r2.status !== r3.status || r2.status !== r4.status) {
-                console.log(`    #${lvl}  V2=${r2.status}  V3=${r3.status}  V4=${r4.status}`);
+            const [r2, f1, f2] = results;
+            if (r2.status !== f1.status || r2.status !== f2.status) {
+                console.log(`    #${lvl}  V2=${r2.status}  F1=${f1.status}  F2=${f2.status}`);
             }
         }
     }
@@ -136,16 +136,16 @@ for (const { label, data } of allGroupData) {
     console.log(HDR_SEP);
     console.log(
         `  ${'Solver'.padEnd(6)}  ${'Avg Time'.padStart(W1)}  ${'Avg Nodes'.padStart(W2)}` +
-        `  ${'vs V2'.padStart(16)}  ${'vs V3'.padStart(16)}`
+        `  ${'vs V2'.padStart(16)}  ${'vs F1'.padStart(16)}`
     );
     console.log(`  ${'-'.repeat(6)}  ${'-'.repeat(W1)}  ${'-'.repeat(W2)}  ${'-'.repeat(16)}  ${'-'.repeat(16)}`);
 
     for (let si = 0; si < SOLVERS.length; si++) {
         const vsV2 = si === 0 ? '      baseline' : ratio(avgTime[si], avgTime[0]);
-        const vsV3 = si <= 1  ? '             —' : ratio(avgTime[si], avgTime[1]);
+        const vsF1 = si <= 1  ? '             —' : ratio(avgTime[si], avgTime[1]);
         console.log(
             `  ${SOLVERS[si].label.padEnd(6)}  ${fmt(avgTime[si]).padStart(W1)}  ` +
-            `${fmtNodes(avgNodes[si]).padStart(W2)}  ${vsV2}  ${vsV3}`
+            `${fmtNodes(avgNodes[si]).padStart(W2)}  ${vsV2}  ${vsF1}`
         );
     }
 }
@@ -163,16 +163,16 @@ console.log(`  [ALL]  ${allData.length} levels total`);
 console.log(HDR_SEP);
 console.log(
     `  ${'Solver'.padEnd(6)}  ${'Avg Time'.padStart(W1)}  ${'Avg Nodes'.padStart(W2)}` +
-    `  ${'vs V2'.padStart(16)}  ${'vs V3'.padStart(16)}`
+    `  ${'vs V2'.padStart(16)}  ${'vs F1'.padStart(16)}`
 );
 console.log(`  ${'-'.repeat(6)}  ${'-'.repeat(W1)}  ${'-'.repeat(W2)}  ${'-'.repeat(16)}  ${'-'.repeat(16)}`);
 
 for (let si = 0; si < SOLVERS.length; si++) {
     const vsV2 = si === 0 ? '      baseline' : ratio(grandAvgTime[si], grandAvgTime[0]);
-    const vsV3 = si <= 1  ? '             —' : ratio(grandAvgTime[si], grandAvgTime[1]);
+    const vsF1 = si <= 1  ? '             —' : ratio(grandAvgTime[si], grandAvgTime[1]);
     console.log(
         `  ${SOLVERS[si].label.padEnd(6)}  ${fmt(grandAvgTime[si]).padStart(W1)}  ` +
-        `${fmtNodes(grandAvgNodes[si]).padStart(W2)}  ${vsV2}  ${vsV3}`
+        `${fmtNodes(grandAvgNodes[si]).padStart(W2)}  ${vsV2}  ${vsF1}`
     );
 }
 console.log();

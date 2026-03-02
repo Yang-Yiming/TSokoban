@@ -1,7 +1,7 @@
 /**
- * AStarSolverV4 — hard-level solver with BFS push-distance heuristic
+ * AStarSolverF2 — hard-level solver with BFS push-distance heuristic
  *
- * Adds on top of V3 (Weighted A* + frozen-box deadlock):
+ * Adds on top of F1 (Weighted A* + frozen-box deadlock):
  *
  * 8. BFS push-distance heuristic  (tighter lower bound)
  *    For each goal cell, we precompute the minimum number of push steps a
@@ -20,7 +20,7 @@
  *    The bipartite matching then uses push-dist instead of Manhattan dist,
  *    giving a strictly tighter admissible lower bound.
  *
- * All other optimisations inherited from V3 / V2:
+ * All other optimisations inherited from F1 / V2:
  *   • Macro-moves (push-only expansion)
  *   • Canonical player position (reachable-zone normalisation)
  *   • Integer cell indices everywhere
@@ -31,7 +31,7 @@
  *   • Weighted A*  (f = g + weight × h, default weight = 1.5)
  *
  * API:
- *   new AStarSolverV4(map, weight?)   // weight defaults to 1.5
+ *   new AStarSolverF2(map, weight?)   // weight defaults to 1.5
  *   solver.solve(maxNodes?)           → SolverResult
  */
 
@@ -126,7 +126,7 @@ const MEMO_FROZEN    = 2;
 const MEMO_FREE      = 3;
 
 // ─── Main solver ─────────────────────────────────────────────────────────────
-export class AStarSolverV4 {
+export class AStarSolverF2 {
     private readonly W: number;
     private readonly H: number;
     private readonly size: number;
@@ -180,7 +180,7 @@ export class AStarSolverV4 {
     private computePushDist(): Int32Array[] {
         const result: Int32Array[] = [];
         for (const goal of this.goalCells) {
-            const dist = new Int32Array(this.size).fill(AStarSolverV4.INF);
+            const dist = new Int32Array(this.size).fill(AStarSolverF2.INF);
             const queue: number[] = [goal];
             dist[goal] = 0;
             let qi = 0;
@@ -198,7 +198,7 @@ export class AStarSolverV4 {
                     const prev = prevY * this.W + prevX;
                     const pl   = plY   * this.W + plX;
                     if (this.walls[prev] || this.walls[pl]) continue;
-                    if (dist[prev] !== AStarSolverV4.INF) continue;
+                    if (dist[prev] !== AStarSolverF2.INF) continue;
                     dist[prev] = d + 1;
                     queue.push(prev);
                 }

@@ -1,5 +1,5 @@
 /**
- * AStarSolverV3 — hard-level solver (non-optimal, fast)
+ * AStarSolverF1 — hard-level solver (non-optimal, fast)
  *
  * Based on V2; adds two further optimisations targeting difficult levels:
  *
@@ -27,7 +27,7 @@
  *   • 2×2 block deadlock detection
  *
  * API:
- *   new AStarSolverV3(map, weight?)   // weight defaults to 1.5
+ *   new AStarSolverF1(map, weight?)   // weight defaults to 1.5
  *   solver.solve(maxNodes?)           → SolverResult
  */
 
@@ -123,7 +123,7 @@ const MEMO_FROZEN    = 2;
 const MEMO_FREE      = 3;
 
 // ─── Main solver ─────────────────────────────────────────────────────────────
-export class AStarSolverV3 {
+export class AStarSolverF1 {
     private readonly W: number;
     private readonly H: number;
     private readonly size: number;
