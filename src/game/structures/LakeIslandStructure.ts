@@ -245,8 +245,13 @@ export const lakeIslandStructure: StructureDefinition = {
                 const worldX = placement.worldX + (lx - center);
                 const worldY = placement.worldY + (ly - center);
 
+                if (worldX === placement.worldX && worldY === placement.worldY) {
+                    continue;
+                }
+
                 const current = api.getTile(worldX, worldY);
-                if (current > 0 || current === context.tileValues.CHEST || current === context.tileValues.GENERATED_LEVEL) {
+                const isHandcraftedLevel = current > 0 && current < context.tileValues.GENERATED_LEVEL;
+                if (isHandcraftedLevel || current === context.tileValues.CHEST) {
                     continue;
                 }
 
