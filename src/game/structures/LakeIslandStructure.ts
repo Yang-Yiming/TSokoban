@@ -268,6 +268,12 @@ export const lakeIslandStructure: StructureDefinition = {
     resolveSpecialLevelIdAt(worldX, worldY, mapSeed) {
         const center = getLakeIslandCenterAt(worldX, worldY, mapSeed);
         if (!center) return undefined;
+
+        const guaranteedCenter = getSpawnGuaranteedCenter(mapSeed);
+        if (center.x === guaranteedCenter.x && center.y === guaranteedCenter.y) {
+            return SPECIAL_LEVEL_LIBRARY['special_hard_1'] ? 'special_hard_1' : pickHardSpecialLevelId(center.x, center.y, mapSeed);
+        }
+
         return pickHardSpecialLevelId(center.x, center.y, mapSeed);
     },
     resolveDiscoveryAt(worldX, worldY, mapSeed) {
