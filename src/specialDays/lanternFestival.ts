@@ -1,8 +1,12 @@
 import type { SpecialDayEffect } from './index';
+import { themeManager, THEMES } from '../theme';
 
 let animationId: number | null = null;
 const lanterns: HTMLImageElement[] = [];
-let overlay: HTMLDivElement | null = null;
+let originalThemeIndex: number | null = null;
+let originalAppBg: string = '';
+const stars: HTMLDivElement[] = [];
+let styleElement: HTMLStyleElement | null = null;
 
 interface Lantern {
   element: HTMLImageElement;
@@ -14,19 +18,24 @@ interface Lantern {
 
 const lanternData: Lantern[] = [];
 
-function createOverlay(app: HTMLElement): void {
-  overlay = document.createElement('div');
-  overlay.style.cssText = `
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: rgba(0, 0, 20, 0.6);
-    pointer-events: none;
-    z-index: 5;
-  `;
-  app.appendChild(overlay);
+function createStars(container: HTMLElement, count: number): void {
+  for (let i = 0; i < count; i++) {
+    const star = document.createElement('div');
+    star.style.cssText = `
+      position: absolute;
+      width: ${1 + Math.random() * 2}px;
+      height: ${1 + Math.random() * 2}px;
+      background: ${Math.random() > 0.5 ? '#fff' : '#fffacd'};
+      border-radius: 50%;
+      opacity: ${0.3 + Math.random() * 0.5};
+      left: ${Math.random() * 100}%;
+      top: ${Math.random() * 100}%;
+      pointer-events: none;
+      z-index: 5;
+    `;
+    container.appendChild(star);
+    stars.push(star);
+  }
 }
 
 function createLanterns(app: HTMLElement): void {
@@ -41,6 +50,7 @@ function createLanterns(app: HTMLElement): void {
       height: 80px;
       pointer-events: none;
       z-index: 6;
+      filter: brightness(0.7) drop-shadow(0 0 20px rgba(255, 200, 100, 0.6));
     `;
 
     lanterns.push(lantern);
@@ -74,9 +84,40 @@ function animateLanterns(): void {
 }
 
 function apply(app: HTMLElement): void {
-  createOverlay(app);
+  // Store and switch theme to 深灰蓝 (index 3)
+  originalThemeIndex = THEMES.findIndex(t => t.name === themeManager.currentTheme.name);
+  themeManager.setTheme(3);
+
+  // Override app background with night sky gradient
+  originalAppBg = app.style.background;
+  app.style.background = 'linear-gradient(to bottom, #1a2a3a, #2d3e50)';
+
+  // Add stars to menu
+  createStars(app, 18);
+
+  // Create lanterns with glow
   createLanterns(app);
   animateLanterns();
+
+  // Add body class and inject game interface styles
+  document.body.classList.add('lantern-festival');
+  styleElement = document.createElement('style');
+  styleElement.textContent = `
+    body.lantern-festival #game-container {
+      background: radial-gradient(ellipse at center, #2d3e50 0%, #1a2a3a 100%) !important;
+    }
+    body.lantern-festival #game-container::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 1;
+    }
+  `;
+  document.head.appendChild(styleElement);
 }
 
 function cleanup(): void {
@@ -89,8 +130,25 @@ function cleanup(): void {
   lanterns.length = 0;
   lanternData.length = 0;
 
-  overlay?.remove();
-  overlay = null;
+  stars.forEach(s => s.remove());
+  stars.length = 0;
+
+  // Restore theme
+  if (originalThemeIndex !== null) {
+    themeManager.setTheme(originalThemeIndex);
+    originalThemeIndex = null;
+  }
+
+  // Restore app background
+  const app = document.getElementById('app');
+  if (app && originalAppBg !== undefined) {
+    app.style.background = originalAppBg;
+  }
+
+  // Remove body class and style element
+  document.body.classList.remove('lantern-festival');
+  styleElement?.remove();
+  styleElement = null;
 }
 
 export default {
