@@ -115,6 +115,21 @@ const BLEND_BORDER = 8;
 
 const BIOME_IDS: BiomeId[] = ['grassland', 'lake', 'highlands', 'darkforest'];
 
+const SPAWN_BIOME_DEFS: BiomeDef[] = [
+    // Theme 0: 苔藓绿
+    { ...BIOME_DEFS.grassland, name: '出生地' },
+    // Theme 1: 春梅红
+    { ...BIOME_DEFS.grassland, name: '出生地', baseColor: { r: 241, g: 147, b: 156 }, flowerPetalColor: '#ffc0cb', flowerCenterColor: '#ff69b4' },
+    // Theme 2: 远山紫
+    { ...BIOME_DEFS.highlands, name: '出生地' },
+    // Theme 3: 深灰蓝
+    { ...BIOME_DEFS.lake, name: '出生地' },
+    // Theme 4: yym色
+    { ...BIOME_DEFS.grassland, name: '出生地', baseColor: { r: 124, g: 113, b: 32 } },
+    // Theme 5: gyx色
+    { ...BIOME_DEFS.grassland, name: '出生地', baseColor: { r: 124, g: 111, b: 52 } },
+];
+
 function pickBiomeId(biomeX: number, biomeY: number): BiomeId {
     const dist = Math.sqrt(biomeX * biomeX + biomeY * biomeY);
     const roll = myRand(biomeX, biomeY, 7777, 0, 99);
@@ -135,17 +150,33 @@ function pickBiomeId(biomeX: number, biomeY: number): BiomeId {
     }
 }
 
+function getBiomeForUnit(bx: number, by: number, themeIndex: number): BiomeDef {
+    if (bx === -1 && by === -1) {
+        return SPAWN_BIOME_DEFS[themeIndex];
+    }
+    return BIOME_DEFS[pickBiomeId(bx, by)];
+}
+
+function isSameBiome(b1: BiomeDef, b2: BiomeDef): boolean {
+    return b1.id === b2.id &&
+           b1.baseColor.r === b2.baseColor.r &&
+           b1.baseColor.g === b2.baseColor.g &&
+           b1.baseColor.b === b2.baseColor.b;
+}
+
 /**
  * Get the biome definition for a given world tile coordinate.
  * At biome boundaries (within BLEND_BORDER tiles), there's a probability-based
  * blend that may return a neighboring biome's definition for smoother transitions.
  */
-export function getBiomeAt(x: number, y: number): BiomeDef {
+export function getBiomeAt(x: number, y: number, themeIndex?: number): BiomeDef {
     const biomeX = Math.floor(x / BIOME_UNIT);
     const biomeY = Math.floor(y / BIOME_UNIT);
-    const primaryId = pickBiomeId(biomeX, biomeY);
+    const theme = themeIndex ?? 0;
 
-    // Check distance to biome unit edges for blending
+    const primaryBiome = getBiomeForUnit(biomeX, biomeY, theme);
+
+    // Unified boundary blending logic
     const localX = ((x % BIOME_UNIT) + BIOME_UNIT) % BIOME_UNIT;
     const localY = ((y % BIOME_UNIT) + BIOME_UNIT) % BIOME_UNIT;
     const distToEdgeX = Math.min(localX, BIOME_UNIT - 1 - localX);
@@ -153,7 +184,6 @@ export function getBiomeAt(x: number, y: number): BiomeDef {
     const distToEdge = Math.min(distToEdgeX, distToEdgeY);
 
     if (distToEdge < BLEND_BORDER) {
-        // Determine which neighbor to potentially blend with
         let neighborBX = biomeX;
         let neighborBY = biomeY;
         if (distToEdgeX <= distToEdgeY) {
@@ -162,17 +192,16 @@ export function getBiomeAt(x: number, y: number): BiomeDef {
             neighborBY += (localY < BIOME_UNIT / 2) ? -1 : 1;
         }
 
-        const neighborId = pickBiomeId(neighborBX, neighborBY);
-        if (neighborId !== primaryId) {
-            // Blend probability: closer to edge = more likely to use neighbor
+        const neighborBiome = getBiomeForUnit(neighborBX, neighborBY, theme);
+        if (!isSameBiome(neighborBiome, primaryBiome)) {
             const blendChance = Math.floor(((BLEND_BORDER - distToEdge) / BLEND_BORDER) * 50);
             if (myRand(x, y, 8888, 0, 99) < blendChance) {
-                return BIOME_DEFS[neighborId];
+                return neighborBiome;
             }
         }
     }
 
-    return BIOME_DEFS[primaryId];
+    return primaryBiome;
 }
 
 /** Get all unique sprite paths across all biomes for preloading */

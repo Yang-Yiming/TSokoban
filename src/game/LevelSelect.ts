@@ -2,7 +2,7 @@ import { myRand, randColorBiome } from '../utils';
 import { MAP_DATA } from './mapData';
 import { showThemeDialog } from '../ui/themeDialog';
 import { showSettingsDialog } from '../ui/settingsDialog';
-import { themeManager } from '../theme';
+import { themeManager, THEMES } from '../theme';
 import { progressManager } from '../progress';
 import { settingsManager } from '../settings';
 import { generatePuzzle } from './puzzleGenerator';
@@ -423,6 +423,12 @@ export class LevelSelect {
         }, 2000);
     }
 
+    private getCurrentThemeIndex(): number {
+        const currentTheme = themeManager.currentTheme;
+        const index = THEMES.findIndex(t => t.name === currentTheme.name);
+        return index >= 0 ? index : 0;
+    }
+
     private getChestPos() {
         const level16Index = 15;
         const x = level16Index * this.LEVEL_SPACING + 2;
@@ -691,7 +697,7 @@ export class LevelSelect {
         const chebyshevDist = this.getDistToNearestLevel(x, y);
 
         // Get biome parameters for this tile
-        const biome = getBiomeAt(x, y);
+        const biome = getBiomeAt(x, y, this.getCurrentThemeIndex());
 
         // 3. Super Large Lake Zones (Rare)
         const lZoneX = Math.floor(x / 24);
@@ -1045,7 +1051,7 @@ export class LevelSelect {
         // Use biome color at viewport center for background fill
         const centerTileX = Math.floor((400 - this.anchorX) / this.nodeWidth);
         const centerTileY = Math.floor((300 - this.anchorY) / this.nodeWidth);
-        const centerBiome = getBiomeAt(centerTileX, centerTileY);
+        const centerBiome = getBiomeAt(centerTileX, centerTileY, this.getCurrentThemeIndex());
         this.ctx.fillStyle = `rgb(${centerBiome.baseColor.r}, ${centerBiome.baseColor.g}, ${centerBiome.baseColor.b})`;
         this.ctx.fillRect(0, 0, 800, 600);
 
@@ -1072,7 +1078,7 @@ export class LevelSelect {
                 const screenY = this.anchorY + dy * this.nodeWidth;
 
                 if (val === this.ROCK) {
-                    const biome = getBiomeAt(dx, dy);
+                    const biome = getBiomeAt(dx, dy, this.getCurrentThemeIndex());
                     const res = myRand(dx * dx, dy * dy, 0, 1, 30);
                     let imgPath: string;
                     if (res < 11) imgPath = biome.bushSprites[0];
@@ -1082,7 +1088,7 @@ export class LevelSelect {
                     const img = this.images.get(imgPath);
                     if (img) this.ctx.drawImage(img, screenX, screenY, this.nodeWidth, this.nodeWidth);
                 } else if (val === this.WATER) {
-                    const biome = getBiomeAt(dx, dy);
+                    const biome = getBiomeAt(dx, dy, this.getCurrentThemeIndex());
                     const waterColor = this.countNeighbors4(dx, dy, this.WATER) < 4 ? biome.waterColors.deep : (this.countNeighbors8_dist2(dx, dy, this.WATER) < 8 ? biome.waterColors.mid : biome.waterColors.light);
                     this.ctx.fillStyle = waterColor;
                     this.ctx.fillRect(screenX, screenY, this.nodeWidth, this.nodeWidth);
@@ -1252,7 +1258,7 @@ export class LevelSelect {
     private drawGrass(dx: number, dy: number) {
         const x = this.anchorX + dx * this.nodeWidth;
         const y = this.anchorY + dy * this.nodeWidth;
-        const biome = getBiomeAt(dx, dy);
+        const biome = getBiomeAt(dx, dy, this.getCurrentThemeIndex());
         this.ctx.fillStyle = randColorBiome(dx, dy, biome.baseColor, biome.colorVariation);
         this.ctx.fillRect(x, y, this.nodeWidth, this.nodeWidth);
 
@@ -1262,7 +1268,7 @@ export class LevelSelect {
         // Edge details (jagged grass look)
         for (let i = 0; i < divide; ++i) {
             if (myRand(dx, dy, i, -10, 10) < 0) {
-                const neighborBiome = getBiomeAt(dx, dy - 1);
+                const neighborBiome = getBiomeAt(dx, dy - 1, this.getCurrentThemeIndex());
                 this.ctx.fillStyle = randColorBiome(dx, dy - 1, neighborBiome.baseColor, neighborBiome.colorVariation);
                 this.ctx.fillRect(x + i * dsize, y, dsize, dsize);
             }
@@ -1273,7 +1279,7 @@ export class LevelSelect {
             if (myRand(dx, dy, i, 0, 1) === 0) {
                 const pieceX = x + myRand(dx, dy, i, 0, divide - 2) * dsize;
                 const pieceY = y + myRand(dx, dy, -i, 0, divide - 1) * dsize;
-                const neighborBiome = getBiomeAt(dx, dy - 1);
+                const neighborBiome = getBiomeAt(dx, dy - 1, this.getCurrentThemeIndex());
                 this.ctx.fillStyle = randColorBiome(dx, dy - 1, neighborBiome.baseColor, neighborBiome.colorVariation);
                 this.ctx.fillRect(pieceX, pieceY, dsize, dsize * myRand(dx, dy, i, 2, 5));
             }
