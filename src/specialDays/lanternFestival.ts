@@ -4,7 +4,6 @@ import { themeManager, THEMES } from '../theme';
 let animationId: number | null = null;
 const lanterns: HTMLImageElement[] = [];
 let originalThemeIndex: number | null = null;
-let originalAppBg: string = '';
 const stars: HTMLDivElement[] = [];
 let styleElement: HTMLStyleElement | null = null;
 
@@ -88,10 +87,6 @@ function apply(app: HTMLElement): void {
   originalThemeIndex = THEMES.findIndex(t => t.name === themeManager.currentTheme.name);
   themeManager.setTheme(3);
 
-  // Override app background with night sky gradient
-  originalAppBg = app.style.background;
-  app.style.background = 'linear-gradient(to bottom, #1a2a3a, #2d3e50)';
-
   // Add stars to menu
   createStars(app, 18);
 
@@ -99,22 +94,32 @@ function apply(app: HTMLElement): void {
   createLanterns(app);
   animateLanterns();
 
-  // Add body class and inject game interface styles
+  // Add body class and inject styles for night atmosphere
   document.body.classList.add('lantern-festival');
   styleElement = document.createElement('style');
   styleElement.textContent = `
+    body.lantern-festival {
+      background: #2a3a4a !important;
+    }
+    body.lantern-festival #app {
+      background: linear-gradient(to bottom, #1a2a3a, #6a7a8a) !important;
+    }
+    body.lantern-festival .cloud {
+      filter: brightness(0.3) !important;
+    }
+    body.lantern-festival #title {
+      filter: brightness(1.8) !important;
+    }
+    body.lantern-festival .icon-btn img {
+      filter: brightness(1.8) !important;
+    }
+    body.lantern-festival button,
+    body.lantern-festival .menu-button {
+      color: #f0f0f0 !important;
+      text-shadow: 0 0 10px rgba(255, 200, 100, 0.5);
+    }
     body.lantern-festival #game-container {
       background: radial-gradient(ellipse at center, #2d3e50 0%, #1a2a3a 100%) !important;
-    }
-    body.lantern-festival #game-container::before {
-      content: '';
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      pointer-events: none;
-      z-index: 1;
     }
   `;
   document.head.appendChild(styleElement);
@@ -137,12 +142,6 @@ function cleanup(): void {
   if (originalThemeIndex !== null) {
     themeManager.setTheme(originalThemeIndex);
     originalThemeIndex = null;
-  }
-
-  // Restore app background
-  const app = document.getElementById('app');
-  if (app && originalAppBg !== undefined) {
-    app.style.background = originalAppBg;
   }
 
   // Remove body class and style element
