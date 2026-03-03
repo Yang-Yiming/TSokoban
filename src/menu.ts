@@ -7,6 +7,8 @@ import { createDialog } from './ui/dialog';
 import { showSettingsDialog } from './ui/settingsDialog';
 import { settingsManager } from './settings';
 import { progressManager } from './progress';
+import { checkSpecialDay } from './specialDays';
+import type { SpecialDayEffect } from './specialDays';
 
 export class Menu {
   private app: HTMLElement;
@@ -28,11 +30,20 @@ export class Menu {
   private isDragging: boolean = false;
   private grassElements: { el: HTMLElement, i: number, j: number }[] = [];
   private bgm: HTMLAudioElement | null = null;
+  private _specialDayEffect: SpecialDayEffect | null = null;
 
   constructor(appId: string) {
     this.app = document.getElementById(appId)!;
     this.init();
-    
+
+    // Check for special days
+    checkSpecialDay().then(effect => {
+      if (effect) {
+        this._specialDayEffect = effect;
+        effect.apply(this.app);
+      }
+    });
+
     themeManager.addListener(() => {
       this.updateGrassColors();
     });
@@ -579,5 +590,9 @@ export class Menu {
     document.addEventListener('click', () => {
       this.bgm?.play().catch(() => {});
     }, { once: true });
+  }
+
+  destroy() {
+    this._specialDayEffect?.cleanup();
   }
 }
