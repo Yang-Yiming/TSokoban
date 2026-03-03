@@ -110,7 +110,7 @@ export const BIOME_DEFS: Record<BiomeId, BiomeDef> = {
     },
 };
 
-const BIOME_UNIT = 60;
+const BIOME_UNIT = 120;
 const BLEND_BORDER = 8;
 
 const BIOME_IDS: BiomeId[] = ['grassland', 'lake', 'highlands', 'darkforest'];
@@ -151,7 +151,7 @@ function pickBiomeId(biomeX: number, biomeY: number): BiomeId {
 }
 
 function getBiomeForUnit(bx: number, by: number, themeIndex: number): BiomeDef {
-    if (bx === -1 && by === -1) {
+    if (bx >= -1 && bx <= 0 && by >= -1 && by <= 0) {
         return SPAWN_BIOME_DEFS[themeIndex];
     }
     return BIOME_DEFS[pickBiomeId(bx, by)];
