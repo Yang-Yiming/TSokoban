@@ -1,9 +1,9 @@
 /**
- * compare.ts — side-by-side comparison of V2 / F1 / F2
+ * compare.ts — side-by-side comparison of V2 / V3 / F1 / F2 / F3
  *
- * Runs all three solvers on every level and prints:
+ * Runs all configured solvers on every level and prints:
  *   • Per-group average time & nodes for each solver
- *   • Speedup ratios (F1 vs V2, F2 vs V2, F2 vs F1)
+ *   • Speedup ratios (vs V2, vs F1)
  *   • Per-level summary showing if any solver differs in status
  *
  * Run:  bun run solver_update_tmp/compare.ts
@@ -13,6 +13,7 @@ import { SokobanMap } from '../../src/game/SokobanMap';
 import { AStarSolverV2 } from './AStarSolverV2';
 import { AStarSolverF1 } from './AStarSolverF1';
 import { AStarSolverF2 } from './AStarSolverF2';
+import { AStarSolverF3 } from './AStarSolverF3';
 import { GROUPS } from './levels';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -75,6 +76,7 @@ const SOLVERS: Array<{ label: string; factory: Factory }> = [
     { label: 'V2', factory: m => new AStarSolverV2(m) },
     { label: 'F1', factory: m => new AStarSolverF1(m) },
     { label: 'F2', factory: m => new AStarSolverF2(m) },
+    { label: 'F3', factory: m => new AStarSolverF3(m) },
 ];
 
 // ─── Collect results ──────────────────────────────────────────────────────────
@@ -111,16 +113,29 @@ console.log(HDR_BIG);
 for (const { label, data } of allGroupData) {
     // ── Per-level table (only show deviating statuses) ────────────────────────
     const hasDiff = data.some(({ results }) => {
-        const [r2, f1, f2] = results;
-        return r2.status !== f1.status || r2.status !== f2.status;
+        const firstStatus = results[0].status;
+        for (let i = 1; i < results.length; i++) {
+            if (results[i].status !== firstStatus) return true;
+        }
+        return false;
     });
 
     if (hasDiff) {
         console.log(`\n  [${label}] status differences:`);
         for (const { lvl, results } of data) {
-            const [r2, f1, f2] = results;
-            if (r2.status !== f1.status || r2.status !== f2.status) {
-                console.log(`    #${lvl}  V2=${r2.status}  F1=${f1.status}  F2=${f2.status}`);
+            const firstStatus = results[0].status;
+            let differs = false;
+            for (let i = 1; i < results.length; i++) {
+                if (results[i].status !== firstStatus) {
+                    differs = true;
+                    break;
+                }
+            }
+            if (differs) {
+                const statusSummary = SOLVERS
+                    .map((solver, index) => `${solver.label}=${results[index].status}`)
+                    .join('  ');
+                console.log(`    #${lvl}  ${statusSummary}`);
             }
         }
     }
@@ -142,7 +157,7 @@ for (const { label, data } of allGroupData) {
 
     for (let si = 0; si < SOLVERS.length; si++) {
         const vsV2 = si === 0 ? '      baseline' : ratio(avgTime[si], avgTime[0]);
-        const vsF1 = si <= 1  ? '             —' : ratio(avgTime[si], avgTime[1]);
+        const vsF1 = si === 2 ? '      baseline' : ratio(avgTime[si], avgTime[2]);
         console.log(
             `  ${SOLVERS[si].label.padEnd(6)}  ${fmt(avgTime[si]).padStart(W1)}  ` +
             `${fmtNodes(avgNodes[si]).padStart(W2)}  ${vsV2}  ${vsF1}`
@@ -169,7 +184,7 @@ console.log(`  ${'-'.repeat(6)}  ${'-'.repeat(W1)}  ${'-'.repeat(W2)}  ${'-'.rep
 
 for (let si = 0; si < SOLVERS.length; si++) {
     const vsV2 = si === 0 ? '      baseline' : ratio(grandAvgTime[si], grandAvgTime[0]);
-    const vsF1 = si <= 1  ? '             —' : ratio(grandAvgTime[si], grandAvgTime[1]);
+    const vsF1 = si === 2 ? '      baseline' : ratio(grandAvgTime[si], grandAvgTime[2]);
     console.log(
         `  ${SOLVERS[si].label.padEnd(6)}  ${fmt(grandAvgTime[si]).padStart(W1)}  ` +
         `${fmtNodes(grandAvgNodes[si]).padStart(W2)}  ${vsV2}  ${vsF1}`

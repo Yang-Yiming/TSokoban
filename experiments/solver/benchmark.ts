@@ -7,15 +7,19 @@
 
 import { SokobanMap } from '../../src/game/SokobanMap';
 import { AStarSolverV2 } from './AStarSolverV2';
+import { AStarSolverV3 } from './AStarSolverV3';
 import { AStarSolverF1 } from './AStarSolverF1';
 import { AStarSolverF2 } from './AStarSolverF2';
+import { AStarSolverF3 } from './AStarSolverF3';
 import { GROUPS } from './levels';
 
 // ─── Solver selection ─────────────────────────────────────────────────────
 // v2 = A* optimal
+// v3 = A* optimal + safer engine optimizations
 // f1 = Weighted A* (w=1.5) + frozen-box deadlock
 // f2 = F1 + BFS push-distance heuristic  ← best for hard levels
-const SOLVER: 'v2' | 'f1' | 'f2' = 'f2';
+// f3 = F2 + best-g/open pruning + local 2×2 + low-allocation successor updates
+const SOLVER: 'v2' | 'v3' | 'f1' | 'f2' | 'f3' = 'f3';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -36,8 +40,10 @@ const SEP = '-'.repeat(74);
 function header() {
     const label =
         SOLVER === 'v2' ? 'AStarSolverV2  — A* (optimal, w=1.0)' :
+        SOLVER === 'v3' ? 'AStarSolverV3  — A* (optimal, w=1.0) + faster dedup/hot path' :
         SOLVER === 'f1' ? 'AStarSolverF1  — Weighted A* (w=1.5) + frozen-box' :
-                          'AStarSolverF2  — Weighted A* (w=1.5) + frozen-box + BFS push-dist';
+        SOLVER === 'f2' ? 'AStarSolverF2  — Weighted A* (w=1.5) + frozen-box + BFS push-dist' :
+                          'AStarSolverF3  — F2 + best-g/open pruning + local 2×2 + low-allocation successor';
     console.log(`Solver: ${label}`);
     console.log(SEP);
     console.log(
@@ -66,8 +72,10 @@ for (const group of GROUPS) {
         const map    = new SokobanMap(levelData);
         const solver =
             SOLVER === 'v2' ? new AStarSolverV2(map) :
+            SOLVER === 'v3' ? new AStarSolverV3(map) :
             SOLVER === 'f1' ? new AStarSolverF1(map) :
-                              new AStarSolverF2(map);
+            SOLVER === 'f2' ? new AStarSolverF2(map) :
+                              new AStarSolverF3(map);
 
         if (typeof globalThis.gc === 'function') globalThis.gc();
 
