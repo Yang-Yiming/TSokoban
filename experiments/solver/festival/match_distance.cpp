@@ -102,7 +102,12 @@ void compute_imagine_distance(board b,
 	targets_num = get_indices_of_boxes(imagined, targets_indices);
 
 	if (boxes_num != targets_num)
-		exit_with_error("box num mismatch2");
+	{
+		// Mismatch between real board and imagined board box counts.
+		// Skip hungarian matching — leave dist_to_imagined at default.
+		free(hc);
+		return;
+	}
 
 	for (i = 0; i < boxes_num; i++)
 	{

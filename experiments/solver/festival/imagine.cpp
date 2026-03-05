@@ -107,6 +107,9 @@ void get_imagined_board(board b, board imagined, int *relevant_board, helper *h)
 		if (h->imagine->imagine_packed_num[i] > packed_boxes)
 			break;
 
+	if (i >= h->imagine->imagined_boards_num)
+		i = h->imagine->imagined_boards_num - 1;
+
 	*relevant_board = i;
 
 	copy_board(h->imagine->imagined_boards[i], imagined);
