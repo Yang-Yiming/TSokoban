@@ -19,7 +19,7 @@ export async function checkSpecialDay(): Promise<SpecialDayEffect | null> {
     const module = await import('./womensDay');
     return module.default;
   }
-  if (monthDay === '03-21') {
+  if (monthDay === '03-21' || monthDay === '10-29') {
     const module = await import('./anniversaryDay');
     return module.default;
   }

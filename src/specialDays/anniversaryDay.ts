@@ -79,10 +79,16 @@ function animateHearts(): void {
   animationId = requestAnimationFrame(animateHearts);
 }
 
+function getThemeIndex(): number {
+  const monthDay = new Date().toISOString().slice(5, 10);
+  // 10-29 uses yym 色 (index 4), 3-21 uses gyx 色 (index 5)
+  return monthDay === '10-29' ? 4 : 5;
+}
+
 function apply(app: HTMLElement): void {
-  // Store and switch theme to gyx 色 (index 5)
+  // Store and switch theme
   originalThemeIndex = THEMES.findIndex(t => t.name === themeManager.currentTheme.name);
-  themeManager.setTheme(5);
+  themeManager.setTheme(getThemeIndex());
 
   // Create floating hearts (rising upward ~ love grows)
   createHearts(app);
