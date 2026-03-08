@@ -14,6 +14,12 @@ const LANTERN_FESTIVAL_DATES = [
 export async function checkSpecialDay(): Promise<SpecialDayEffect | null> {
   const today = new Date().toISOString().slice(0, 10);
 
+  const monthDay = today.slice(5); // "MM-DD"
+  if (monthDay === '03-08') {
+    const module = await import('./womensDay');
+    return module.default;
+  }
+
   if (LANTERN_FESTIVAL_DATES.includes(today)) {
     const module = await import('./lanternFestival');
     return module.default;
