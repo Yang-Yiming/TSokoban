@@ -19,6 +19,10 @@ export async function checkSpecialDay(): Promise<SpecialDayEffect | null> {
     const module = await import('./womensDay');
     return module.default;
   }
+  if (monthDay === '03-21') {
+    const module = await import('./anniversaryDay');
+    return module.default;
+  }
 
   if (LANTERN_FESTIVAL_DATES.includes(today)) {
     const module = await import('./lanternFestival');
