@@ -44,7 +44,7 @@ function header() {
         SOLVER === 'f2' ? 'AStarSolverF2  — Weighted A* (w=1.5) + frozen-box + BFS push-dist' :
         SOLVER === 'f3' ? 'AStarSolverF3  — F2 + best-g/open pruning + local 2×2 + low-allocation successor' :
                           'FestivalSolver — Rust Festival solver via WASM';
-    console.log(`Solver: ${label}`);
+    console.log(`Solver: ${label}${UNLIMITED ? '  [UNLIMITED]' : ''}`);
     console.log(SEP);
     console.log(
         `${'#'.padStart(COL.lvl)}  ${'Diff'.padEnd(COL.diff)}  ${'Status'.padEnd(COL.status)}` +
@@ -55,7 +55,8 @@ function header() {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-const MAX_NODES = 2_000_000;
+const UNLIMITED = process.argv.includes('--unlimited');
+const MAX_NODES = UNLIMITED ? Infinity : 2_000_000;
 
 header();
 
