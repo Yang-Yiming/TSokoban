@@ -10,7 +10,6 @@ import { AStarSolverV2 } from './AStarSolverV2';
 import { AStarSolverF1 } from './AStarSolverF1';
 import { AStarSolverF2 } from './AStarSolverF2';
 import { AStarSolverF3 } from './AStarSolverF3';
-import { FestivalSolver } from './FestivalSolver';
 import { GROUPS } from './levels';
 
 // ─── Solver selection ─────────────────────────────────────────────────────
@@ -18,7 +17,7 @@ import { GROUPS } from './levels';
 // f1 = Weighted A* (w=1.5) + frozen-box deadlock
 // f2 = F1 + BFS push-distance heuristic  ← best for hard levels
 // f3 = F2 + best-g/open pruning + local 2×2 + low-allocation successor updates
-const SOLVER: 'v2' | 'f1' | 'f2' | 'f3' | 'festival' = 'f3';
+const SOLVER: 'v2' | 'f1' | 'f2' | 'f3' = 'f3';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -41,8 +40,7 @@ function header() {
         SOLVER === 'v2' ? 'AStarSolverV2  — A* (optimal, w=1.0)' :
         SOLVER === 'f1' ? 'AStarSolverF1  — Weighted A* (w=1.5) + frozen-box' :
         SOLVER === 'f2' ? 'AStarSolverF2  — Weighted A* (w=1.5) + frozen-box + BFS push-dist' :
-        SOLVER === 'f3' ? 'AStarSolverF3  — F2 + best-g/open pruning + local 2×2 + low-allocation successor' :
-                          'Festival 3.1   — External WASM solver (child process)';
+                          'AStarSolverF3  — F2 + best-g/open pruning + local 2×2 + low-allocation successor';
     console.log(`Solver: ${label}`);
     console.log(SEP);
     console.log(
@@ -73,8 +71,7 @@ for (const group of GROUPS) {
             SOLVER === 'v2' ? new AStarSolverV2(map) :
             SOLVER === 'f1' ? new AStarSolverF1(map) :
             SOLVER === 'f2' ? new AStarSolverF2(map) :
-            SOLVER === 'f3' ? new AStarSolverF3(map) :
-                              new FestivalSolver(map);
+                              new AStarSolverF3(map);
 
         if (typeof globalThis.gc === 'function') globalThis.gc();
 
