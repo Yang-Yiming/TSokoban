@@ -1,0 +1,11 @@
+{
+  "name": "festival",
+  "version": "0.1.0",
+  "files": [
+    "festival_wasm_bg.wasm",
+    "festival_wasm.js",
+    "festival_wasm.d.ts"
+  ],
+  "main": "festival_wasm.js",
+  "types": "festival_wasm.d.ts"
+}

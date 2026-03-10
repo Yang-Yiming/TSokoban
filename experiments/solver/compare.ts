@@ -14,6 +14,7 @@ import { AStarSolverV2 } from './AStarSolverV2';
 import { AStarSolverF1 } from './AStarSolverF1';
 import { AStarSolverF2 } from './AStarSolverF2';
 import { AStarSolverF3 } from './AStarSolverF3';
+import { FestivalSolver } from './FestivalSolver';
 import { GROUPS } from './levels';
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -77,6 +78,7 @@ const SOLVERS: Array<{ label: string; factory: Factory }> = [
     { label: 'F1', factory: m => new AStarSolverF1(m) },
     { label: 'F2', factory: m => new AStarSolverF2(m) },
     { label: 'F3', factory: m => new AStarSolverF3(m) },
+    { label: 'Fest', factory: m => new FestivalSolver(m) },
 ];
 
 // ─── Collect results ──────────────────────────────────────────────────────────
