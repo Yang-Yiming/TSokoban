@@ -80,7 +80,8 @@ function animateHearts(): void {
 }
 
 function getThemeIndex(): number {
-  const monthDay = new Date().toISOString().slice(5, 10);
+  const now = new Date();
+  const monthDay = `${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
   // 10-29 uses yym 色 (index 4), 3-21 uses gyx 色 (index 5)
   return monthDay === '10-29' ? 4 : 5;
 }
