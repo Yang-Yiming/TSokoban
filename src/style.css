@@ -472,6 +472,13 @@ canvas {
   text-shadow: 1px 1px 3px rgba(0,0,0,0.4);
 }
 
+.win-fish {
+  font-size: 22px;
+  color: #7ec8e3;
+  margin: 4px 0;
+  text-shadow: 1px 1px 3px rgba(0,0,0,0.3);
+}
+
 .lose-overlay {
   position: absolute;
   top: 0;

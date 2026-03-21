@@ -20,6 +20,7 @@ export class LevelSelect {
     private catImg: HTMLImageElement;
     private chestImg: HTMLImageElement;
     private equipmentImg: HTMLImageElement;
+    private fishCountEl: HTMLElement;
     private currentCatImgPath: string = '';
     private currentChestImgPath: string = '';
     private isChestOpening: boolean = false;
@@ -61,6 +62,7 @@ export class LevelSelect {
     private ROCK = -2;
     private CHEST = -1;
     private SPECIAL_LEVEL = -4;
+    private DECORATION = -5;
     private readonly GENERATED_LEVEL = 50;
     private readonly LEVEL_SPACING = 6;
     private readonly GENERATED_LEVEL_CELL = 10; // cell size for generated level placement
@@ -130,7 +132,20 @@ export class LevelSelect {
             this.draw();
         };
         container.appendChild(this.equipmentImg);
-        
+
+        this.fishCountEl = document.createElement('div');
+        this.fishCountEl.style.position = 'absolute';
+        this.fishCountEl.style.bottom = '90px';
+        this.fishCountEl.style.right = '20px';
+        this.fishCountEl.style.zIndex = '100';
+        this.fishCountEl.style.fontFamily = 'Pixel, monospace';
+        this.fishCountEl.style.fontSize = '16px';
+        this.fishCountEl.style.color = '#fff';
+        this.fishCountEl.style.textShadow = '1px 1px 2px rgba(0,0,0,0.6)';
+        this.fishCountEl.style.textAlign = 'center';
+        this.fishCountEl.style.minWidth = '64px';
+        container.appendChild(this.fishCountEl);
+
         this.onLevelSelect = onLevelSelect;
         this.onBack = onBack;
         
@@ -556,6 +571,7 @@ export class LevelSelect {
         this.currentStructureZoneId = resolveStructureDiscoveryAt(this.catX, this.catY, mapSeed)?.id ?? null;
         this.checkChestInteraction();
         this.updateEquipmentUI();
+        this.updateFishCountUI();
         this.draw();
     }
 
@@ -563,6 +579,12 @@ export class LevelSelect {
         const equipment = progressManager.getEquipment();
         this.equipmentImg.src = `/assets/images/${equipment}.png`;
         this.equipmentImg.style.opacity = equipment === 'none' ? '0.6' : '1';
+    }
+
+    private updateFishCountUI() {
+        const count = progressManager.getFishCount();
+        this.fishCountEl.textContent = `🐟 ×${count}`;
+        this.fishCountEl.style.display = count > 0 ? '' : 'none';
     }
 
     private findPath(startX: number, startY: number, targetX: number, targetY: number): {x: number, y: number}[] | null {
@@ -690,6 +712,9 @@ export class LevelSelect {
         // 1b. Generated level placement (cell-based, beyond handcrafted area)
         const genLevel = this.getGeneratedLevelAt(x, y);
         if (genLevel) {
+            if (progressManager.isGeneratedLevelCompleted(x, y)) {
+                return this.DECORATION;
+            }
             return this.GENERATED_LEVEL;
         }
 
@@ -1106,6 +1131,14 @@ export class LevelSelect {
                             if (img) this.ctx.drawImage(img, screenX, screenY, this.nodeWidth, this.nodeWidth);
                         }
                     }
+                } else if (val === this.DECORATION) {
+                    // Completed generated level — draw biome-aware decoration
+                    const biome = getBiomeAt(dx, dy, this.getCurrentThemeIndex());
+                    this.ctx.fillStyle = randColorBiome(dx, dy, biome.baseColor, biome.colorVariation);
+                    this.ctx.fillRect(screenX, screenY, this.nodeWidth, this.nodeWidth);
+                    this.ctx.font = `${this.nodeWidth * 0.6}px serif`;
+                    this.ctx.textAlign = 'center';
+                    this.ctx.fillText('🌸', screenX + this.nodeWidth / 2, screenY + this.nodeWidth * 0.7);
                 } else if (val === this.GENERATED_LEVEL) {
                     // Generated level node - draw with different style
                     const img = this.images.get('/assets/images/level.png');
@@ -1318,6 +1351,8 @@ export class LevelSelect {
         }
         this.catImg.remove();
         this.chestImg.remove();
+        this.equipmentImg.remove();
+        this.fishCountEl.remove();
         this.canvas.remove();
     }
 }

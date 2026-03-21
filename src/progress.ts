@@ -10,6 +10,8 @@ export interface Progress {
     chestOpened: boolean;
     equipment: Equipment;
     discoveredStructures: string[];
+    fishCount: number;
+    completedGeneratedLevels: string[]; // "worldX,worldY" keys
 }
 
 class ProgressManager {
@@ -26,6 +28,8 @@ class ProgressManager {
                 if (this.progress.chestOpened === undefined) this.progress.chestOpened = false;
                 if (!this.progress.equipment) this.progress.equipment = 'none';
                 if (!this.progress.discoveredStructures) this.progress.discoveredStructures = [];
+                if (this.progress.fishCount === undefined) this.progress.fishCount = 0;
+                if (!this.progress.completedGeneratedLevels) this.progress.completedGeneratedLevels = [];
             } catch (e) {
                 this.progress = this.getDefaultProgress();
             }
@@ -40,7 +44,9 @@ class ProgressManager {
             itemCounts: { hint: 3, plus: 3, undo: 3 },
             chestOpened: false,
             equipment: 'none',
-            discoveredStructures: []
+            discoveredStructures: [],
+            fishCount: 0,
+            completedGeneratedLevels: []
         };
     }
 
@@ -119,6 +125,27 @@ class ProgressManager {
         this.progress.discoveredStructures.push(structureId);
         this.save();
         return true;
+    }
+
+    getFishCount(): number {
+        return this.progress.fishCount;
+    }
+
+    addFish(amount: number) {
+        this.progress.fishCount += amount;
+        this.save();
+    }
+
+    isGeneratedLevelCompleted(worldX: number, worldY: number): boolean {
+        return this.progress.completedGeneratedLevels.includes(`${worldX},${worldY}`);
+    }
+
+    completeGeneratedLevel(worldX: number, worldY: number) {
+        const key = `${worldX},${worldY}`;
+        if (!this.progress.completedGeneratedLevels.includes(key)) {
+            this.progress.completedGeneratedLevels.push(key);
+            this.save();
+        }
     }
 
     exportSave(): string {

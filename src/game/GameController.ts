@@ -617,10 +617,23 @@ export class GameController {
         return 1;
     }
 
+    private calculateFishDrop(): number {
+        const stars = this.getStarRating();
+        const difficulty = this.generatedLevelMeta?.difficulty ?? 1;
+        let fish = 1;
+        if (stars >= 3) fish += 1;
+        if (difficulty >= 4) fish += 1;
+        return fish;
+    }
+
     private showWinAnimation(callback: () => void) {
         if (this.isDestroyed) return;
         const stars = this.getStarRating();
         const starText = '★'.repeat(stars) + '☆'.repeat(3 - stars);
+        const fishReward = this.isGeneratedLevel ? this.calculateFishDrop() : 0;
+        const fishHtml = fishReward > 0
+            ? `<div class="win-fish">+${fishReward} 🐟</div>`
+            : '';
         const overlay = document.createElement('div');
         this.currentOverlay = overlay;
         overlay.className = 'win-overlay';
@@ -629,6 +642,7 @@ export class GameController {
                 <div class="win-line"></div>
                 <div class="win-text">完成</div>
                 <div class="win-stars">${starText}</div>
+                ${fishHtml}
                 <div class="win-line"></div>
             </div>
         `;
@@ -657,6 +671,12 @@ export class GameController {
                 if (!this.isDestroyed) {
                     if (!this.isGeneratedLevel && !this.isSpecialLevel) {
                         progressManager.completeLevel(this.currentLevelIndex);
+                    } else if (this.isGeneratedLevel && this.generatedLevelMeta) {
+                        progressManager.addFish(fishReward);
+                        progressManager.completeGeneratedLevel(
+                            this.generatedLevelMeta.worldX,
+                            this.generatedLevelMeta.worldY
+                        );
                     }
                     callback();
                 }
