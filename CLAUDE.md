@@ -34,7 +34,7 @@ Entry point: `src/main.ts` → instantiates `Menu` which owns the top-level UI.
 
 - **`src/menu.ts`** — main menu with animated elements (clouds, box, cat)
 - **`src/settings.ts`** — `SettingsManager` with listener-based reactivity (move duration, volume, A* toggle, map seed)
-- **`src/progress.ts`** — `ProgressManager` for save/load via localStorage with base64 export/import
+- **`src/progress.ts`** — `ProgressManager` for save/load via localStorage with base64 export/import. Tracks completed levels, item counts (hint/plus/undo), equipment, discovered structures, 小鱼干 (fish currency), and completed generated levels.
 - **`src/theme.ts`** — `ThemeManager` with 6 predefined themes (RGB color sets), listener-based reactivity
 - **`src/ui/`** — dialog components (settings dialog, theme dialog, generic dialog)
 - **`src/utils.ts`** — seeded PRNG, color utilities
@@ -45,3 +45,9 @@ Entry point: `src/main.ts` → instantiates `Menu` which owns the top-level UI.
 - **Bitmask tiles**: tile state is composed with bitwise ops (e.g. a box on a goal = `BOX | GOAL`). Check tile properties with `& TILE_MASK.X`.
 - **Animation queue**: moves are queued so rapid input doesn't drop commands; animations are throttled by the `moveAnimDuration` setting.
 - **Event cleanup**: `GameController` registers all DOM listeners in a tracked list and removes them on `destroy()` to prevent leaks when switching between menu and game.
+
+### Reward system
+
+- **小鱼干 (dried fish)**: lightweight currency earned by completing generated levels. Drop formula: base 1 + 1 if 3-star + 1 if difficulty ≥ 4 (range 1–3 per level). Stored in `Progress.fishCount`.
+- **Generated level completion**: tracked via `Progress.completedGeneratedLevels` (keys: `"worldX,worldY"`). Completed levels render as `DECORATION` tiles (🌸) on the world map and cannot be re-entered.
+- **World map tile constants** in `LevelSelect`: `WATER=-3, ROCK=-2, CHEST=-1, SPECIAL_LEVEL=-4, DECORATION=-5, GENERATED_LEVEL=50`. Positive values = handcrafted level index + 1.
