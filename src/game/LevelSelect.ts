@@ -1132,13 +1132,29 @@ export class LevelSelect {
                         }
                     }
                 } else if (val === this.DECORATION) {
-                    // Completed generated level — draw biome-aware decoration
+                    // Pixel flower for completed generated level (gold petals)
                     const biome = getBiomeAt(dx, dy, this.getCurrentThemeIndex());
                     this.ctx.fillStyle = randColorBiome(dx, dy, biome.baseColor, biome.colorVariation);
                     this.ctx.fillRect(screenX, screenY, this.nodeWidth, this.nodeWidth);
-                    this.ctx.font = `${this.nodeWidth * 0.6}px serif`;
-                    this.ctx.textAlign = 'center';
-                    this.ctx.fillText('🌸', screenX + this.nodeWidth / 2, screenY + this.nodeWidth * 0.7);
+                    
+                    const divide = 8;
+                    const dsize = this.nodeWidth / divide;
+                    const pieceX = screenX + dsize * 3;
+                    const pieceY = screenY + dsize * 2;
+                    
+                    // Shadow
+                    this.ctx.fillStyle = `rgb(${Math.floor(biome.baseColor.r * 0.6)}, ${Math.floor(biome.baseColor.g * 0.6)}, ${Math.floor(biome.baseColor.b * 0.6)})`;
+                    this.ctx.fillRect(pieceX, pieceY + dsize * 2, dsize, dsize);
+                    this.ctx.fillRect(pieceX - dsize, pieceY + dsize, dsize * 3, dsize);
+                    
+                    // Petals (Cross shape) - gold color for completed levels
+                    this.ctx.fillStyle = '#ffd700';
+                    this.ctx.fillRect(pieceX - dsize, pieceY, dsize * 3, dsize);
+                    this.ctx.fillRect(pieceX, pieceY - dsize, dsize, dsize * 3);
+                    
+                    // Center - orange
+                    this.ctx.fillStyle = '#ff8c00';
+                    this.ctx.fillRect(pieceX, pieceY, dsize, dsize);
                 } else if (val === this.GENERATED_LEVEL) {
                     // Generated level node - draw with different style
                     const img = this.images.get('/assets/images/level.png');

@@ -19,7 +19,7 @@ import { GROUPS } from './levels';
 // f2 = F1 + BFS push-distance heuristic  ← best for hard levels
 // f3 = F2 + best-g/open pruning + local 2×2 + low-allocation successor updates
 // fest = Rust Festival solver via WASM
-const SOLVER: 'v2' | 'f1' | 'f2' | 'f3' | 'fest' = 'f3';
+const SOLVER: 'v2' | 'f1' | 'f2' | 'f3' | 'fest' = 'fest';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
