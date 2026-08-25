@@ -583,7 +583,7 @@ export class LevelSelect {
 
     private updateFishCountUI() {
         const count = progressManager.getFishCount();
-        this.fishCountEl.textContent = `🐟 ×${count}`;
+        this.fishCountEl.innerHTML = `<img src="/assets/images/fish.png" alt="小鱼干" style="width:16px;height:16px;image-rendering:pixelated;vertical-align:-3px;margin-right:2px;"> ×${count}`;
         this.fishCountEl.style.display = count > 0 ? '' : 'none';
     }
 

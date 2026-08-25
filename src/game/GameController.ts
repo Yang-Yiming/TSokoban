@@ -637,7 +637,7 @@ export class GameController {
         const starText = '★'.repeat(stars) + '☆'.repeat(3 - stars);
         const fishReward = this.isGeneratedLevel ? this.calculateFishDrop() : 0;
         const fishHtml = fishReward > 0
-            ? `<div class="win-fish">+${fishReward} 🐟</div>`
+            ? `<div class="win-fish">+${fishReward} <img src="/assets/images/fish.png" alt="小鱼干"></div>`
             : '';
         const overlay = document.createElement('div');
         this.currentOverlay = overlay;
