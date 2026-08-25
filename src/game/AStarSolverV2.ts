@@ -379,7 +379,7 @@ export class AStarSolverV2 {
     }
 
     // ── Main search ───────────────────────────────────────────────────────────
-    solve(maxNodes = 10000): SolverResult {
+    solve(maxNodes = 10000, deadlineMs = Infinity): SolverResult {
         // Scratch buffers (reused every BFS call)
         const reachBuf = new Uint8Array(this.size);
         const boxSet   = new Uint8Array(this.size);
@@ -414,6 +414,9 @@ export class AStarSolverV2 {
 
         while (heap.size > 0) {
             if (nodesCount >= maxNodes) {
+                return { status: 'limit-reached', nodesExpanded: nodesCount };
+            }
+            if ((nodesCount & 0x1ff) === 0 && performance.now() > deadlineMs) {
                 return { status: 'limit-reached', nodesExpanded: nodesCount };
             }
 

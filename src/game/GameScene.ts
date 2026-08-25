@@ -23,6 +23,7 @@ export class GameScene {
     private animationInterval: any = null;
     private boundMouseMove: any;
     private boundMouseUp: any;
+    private boundResize: any;
     private currentMap: SokobanMap | null = null;
     private themeListener: (theme: any) => void;
 
@@ -52,7 +53,8 @@ export class GameScene {
         container.appendChild(this.topCanvas);
 
         this.resize(container);
-        window.addEventListener('resize', () => this.resize(container));
+        this.boundResize = () => this.resize(container);
+        window.addEventListener('resize', this.boundResize);
         this.setupDragging();
         this.loadImages();
         
@@ -520,6 +522,9 @@ export class GameScene {
         if (this.animationInterval) clearInterval(this.animationInterval);
         window.removeEventListener('mousemove', this.boundMouseMove);
         window.removeEventListener('mouseup', this.boundMouseUp);
+        if (this.boundResize) {
+            window.removeEventListener('resize', this.boundResize);
+        }
         themeManager.removeListener(this.themeListener);
         this.playerImg.remove();
         this.canvas.remove();

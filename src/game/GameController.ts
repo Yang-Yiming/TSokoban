@@ -21,7 +21,6 @@ export class GameController {
     private optimalSteps: number = 0;
     private stepCount: number = 0;
     private stepLimit: number = 0;
-    private itemCounts = progressManager.getItemCounts();
     
     private playerOrientation: number = 2; // 1:up, 2:down, 3:left, 4:right
     private isGameOver: boolean = false;
@@ -31,6 +30,7 @@ export class GameController {
     private lastPushedBox: { x: number, y: number } | null = null;
     private moveQueue: { dx: number, dy: number, orientation: number }[] = [];
     private bgm: HTMLAudioElement | null = null;
+    private bgmPlayOnceHandler: (() => void) | null = null;
     private isDestroyed: boolean = false;
     private eventListeners: { target: EventTarget, type: string, handler: any }[] = [];
     private currentOverlay: HTMLElement | null = null;
@@ -69,6 +69,10 @@ export class GameController {
 
     public destroy() {
         this.isDestroyed = true;
+        if (this.bgmPlayOnceHandler) {
+            window.removeEventListener('click', this.bgmPlayOnceHandler);
+            this.bgmPlayOnceHandler = null;
+        }
         if (this.bgm) {
             this.bgm.pause();
             this.bgm = null;
@@ -98,6 +102,7 @@ export class GameController {
                 this.bgm?.play();
                 window.removeEventListener('click', playOnce);
             };
+            this.bgmPlayOnceHandler = playOnce;
             window.addEventListener('click', playOnce);
         });
     }
@@ -223,10 +228,11 @@ export class GameController {
         // Bottom Left: Items
         const itemBar = document.createElement('div');
         itemBar.className = 'ui-item-bar';
+        const currentItems = progressManager.getItemCounts();
         const items = [
-            { id: 'hint', img: 'hint.png', count: this.itemCounts.hint, action: () => this.useHint() },
-            { id: 'plus', img: 'plus.png', count: this.itemCounts.plus, action: () => this.usePlus() },
-            { id: 'undo', img: 'withdraw.png', count: this.itemCounts.undo, action: () => this.useUndo() }
+            { id: 'hint', img: 'hint.png', count: currentItems.hint, action: () => this.useHint() },
+            { id: 'plus', img: 'plus.png', count: currentItems.plus, action: () => this.usePlus() },
+            { id: 'undo', img: 'withdraw.png', count: currentItems.undo, action: () => this.useUndo() }
         ];
 
         const itemTexts: any = {};
@@ -317,14 +323,15 @@ export class GameController {
         }
         this.uiElements.stepText.innerText = `移动步数: ${this.stepCount}`;
         this.uiElements.limitText.innerText = `步数限制: ${Number.isFinite(this.stepLimit) ? this.stepLimit : '∞'}`;
-        this.uiElements.itemHintText.innerText = `x${this.itemCounts.hint}`;
-        this.uiElements.itemPlusText.innerText = `x${this.itemCounts.plus}`;
-        this.uiElements.itemUndoText.innerText = `x${this.itemCounts.undo}`;
+        const counts = progressManager.getItemCounts();
+        this.uiElements.itemHintText.innerText = `x${counts.hint}`;
+        this.uiElements.itemPlusText.innerText = `x${counts.plus}`;
+        this.uiElements.itemUndoText.innerText = `x${counts.undo}`;
     }
 
     private useHint() {
         const now = performance.now();
-        if (this.itemCounts.hint <= 0 || !this.currentMap || this.isGameOver || (now - this.lastMoveTime < this.moveAnimDuration) || this.moveQueue.length > 0) return;
+        if (progressManager.getItemCounts().hint <= 0 || !this.currentMap || this.isGameOver || (now - this.lastMoveTime < this.moveAnimDuration) || this.moveQueue.length > 0) return;
         
         const solver = new AStarSolver(this.currentMap);
         const result = solver.solve(5000);
@@ -342,8 +349,7 @@ export class GameController {
                 }
                 this.moveQueue.push({ dx, dy, orientation });
             }
-            this.itemCounts.hint--;
-            progressManager.setItemCounts(this.itemCounts);
+            progressManager.useItem('hint');
             this.updateUI();
         } else {
             alert('此局无解，建议重置或撤销！');
@@ -351,10 +357,9 @@ export class GameController {
     }
 
     private usePlus() {
-        if (this.itemCounts.plus <= 0 || !this.currentMap) return;
+        if (progressManager.getItemCounts().plus <= 0 || !this.currentMap) return;
         this.stepLimit += 5;
-        this.itemCounts.plus--;
-        progressManager.setItemCounts(this.itemCounts);
+        progressManager.useItem('plus');
         
         if (this.isGameOver && this.stepCount < this.stepLimit && !this.currentMap.isDeadlock()) {
             this.isGameOver = false;
@@ -368,7 +373,7 @@ export class GameController {
     }
 
     private useUndo() {
-        if (this.itemCounts.undo <= 0 || !this.currentMap) return;
+        if (progressManager.getItemCounts().undo <= 0 || !this.currentMap) return;
         if (this.currentMap.undo()) {
             this.isGameOver = false;
             if (this.currentOverlay) {
@@ -376,8 +381,7 @@ export class GameController {
                 this.currentOverlay = null;
             }
             this.stepCount--;
-            this.itemCounts.undo--;
-            progressManager.setItemCounts(this.itemCounts);
+            progressManager.useItem('undo');
             this.lastMoveTime = 0; // Reset animation to snap to previous position
             this.updateUI();
         }
@@ -421,11 +425,6 @@ export class GameController {
         } else {
             this.optimalSteps = 0;
             this.stepLimit = Number.POSITIVE_INFINITY;
-        }
-
-        // Hardcode Level 5 (index 4)
-        if (index === 4) {
-            this.stepLimit = 52;
         }
 
         this.scene.setInitialAnchor(this.currentMap);
@@ -513,6 +512,12 @@ export class GameController {
     private setupInput() {
         const keyHandler = (e: KeyboardEvent) => {
             if (!this.currentMap || this.isDestroyed || this.isGameOver) return;
+
+            // Manual movement input cancels any pending hint replay (same as LevelSelect pathfinding)
+            const isMovementKey = ['w', 'a', 's', 'd', 'h', 'j', 'k', 'l'].includes(e.key) || e.key.startsWith('Arrow');
+            if (isMovementKey && this.moveQueue.length > 0) {
+                this.moveQueue = [];
+            }
 
             // Prevent moving while animation is playing
             const now = performance.now();
