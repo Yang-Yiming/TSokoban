@@ -8,7 +8,8 @@
     "build": "tsc && vite build",
     "build:single": "tsc && MULTIPLAYER=0 vite build",
     "preview": "vite preview",
-    "server": "bun server/room.ts"
+    "server": "bun server/room.ts",
+    "test:mp": "bun scripts/smoke_mp.ts"
   },
   "devDependencies": {
     "typescript": "~5.9.3",

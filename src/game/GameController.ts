@@ -81,6 +81,13 @@ export class GameController {
             session.onPeerMove = (dx, dy) => this.applyPeerMove(dx, dy);
             session.onPeerWin = () => this.handlePeerWin();
             session.onPeerRestart = () => this.doRestart(false);
+            session.onPeerExitLevel = () => {
+                // Peer left the level while I'm still in it — remove their cat.
+                this.peerPos = null;
+                this.peerAnim = null;
+                this.peerLastPushed = null;
+                this.scene.setPeerVisible(false);
+            };
             // Guest cat wears the tint on both screens.
             this.scene.setPlayerTint(session.isGuest ? PEER_TINT : null);
             this.scene.setPeerTint(session.isHost ? PEER_TINT : null);
@@ -106,6 +113,7 @@ export class GameController {
             this.mp.session.onPeerMove = () => {};
             this.mp.session.onPeerWin = () => {};
             this.mp.session.onPeerRestart = () => {};
+            this.mp.session.onPeerExitLevel = () => {};
         }
         if (this.bgmPlayOnceHandler) {
             window.removeEventListener('click', this.bgmPlayOnceHandler);

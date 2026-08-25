@@ -118,6 +118,8 @@ export class MultiplayerSession {
   onPeerMove: (dx: number, dy: number) => void = () => {};
   onPeerWin: () => void = () => {};
   onPeerRestart: () => void = () => {};
+  /** Peer left the level I'm still in — hide their cat. */
+  onPeerExitLevel: (x: number, y: number) => void = () => {};
   onDisconnected: (reason: DisconnectReason) => void = () => {};
   onError: (msg: string) => void = () => {};
 
@@ -305,6 +307,7 @@ export class MultiplayerSession {
           this.peer.x = p.x;
           this.peer.y = p.y;
           this.onPeerWorldUpdate(this.peer);
+          this.onPeerExitLevel(p.x, p.y);
         }
         break;
       }
