@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "build:single": "tsc && MULTIPLAYER=0 vite build",
+    "preview": "vite preview",
+    "server": "bun server/room.ts"
   },
   "devDependencies": {
     "typescript": "~5.9.3",

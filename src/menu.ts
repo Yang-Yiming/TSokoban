@@ -9,6 +9,9 @@ import { settingsManager } from './settings';
 import { progressManager } from './progress';
 import { checkSpecialDay } from './specialDays';
 import type { SpecialDayEffect } from './specialDays';
+import { MultiplayerSession } from './net/MultiplayerSession';
+import type { DisconnectReason } from './net/MultiplayerSession';
+import type { LevelRef, Spawn, WorldFlags } from './net/protocol';
 
 export class Menu {
   private app: HTMLElement;
@@ -31,10 +34,15 @@ export class Menu {
   private grassElements: { el: HTMLElement, i: number, j: number }[] = [];
   private bgm: HTMLAudioElement | null = null;
   private _specialDayEffect: SpecialDayEffect | null = null;
+  private session: MultiplayerSession | null = null;
+  private mpCleanup: (() => void) | null = null;
 
   constructor(appId: string) {
     this.app = document.getElementById(appId)!;
     this.init();
+
+    // Direct-link join: ?room=XXXX skips the menu entirely
+    this.autoJoinFromUrl();
 
     // Check for special days
     checkSpecialDay().then(effect => {
@@ -332,16 +340,28 @@ export class Menu {
 
   private showModeButtons() {
     const modes = [
-      { text: '经典模式', top: 270 },
-      // { text: '无尽模式', top: 320 },
-      { text: '双人模式', top: 320 }
+      { text: '经典模式', sub: '单人游玩', img: '/assets/images/choice2.png', left: '25%', action: () => this.showLevelSelect() },
+      { text: '创建房间', sub: '和朋友联机（房主）', img: '/assets/images/choice1.png', left: '50%', action: () => { if (__MULTIPLAYER__) this.startCreateRoom(); else this.showMpUnavailable(); } },
+      { text: '加入房间', sub: '没有链接？输入房号', img: '/assets/images/choice3.png', left: '75%', action: () => { if (__MULTIPLAYER__) this.startJoinRoom(); else this.showMpUnavailable(); } }
     ];
 
     modes.forEach((mode) => {
       const btn = document.createElement('button');
-      btn.className = 'mode-btn';
-      btn.innerText = mode.text;
-      btn.style.top = `${mode.top}px`;
+      btn.className = 'mode-btn mode-icon-btn';
+      btn.style.top = '320px';
+      btn.style.left = mode.left;
+      const img = document.createElement('img');
+      img.src = mode.img;
+      img.draggable = false;
+      const label = document.createElement('span');
+      label.className = 'mode-btn-label';
+      label.innerText = mode.text;
+      const sub = document.createElement('span');
+      sub.className = 'mode-btn-sub';
+      sub.innerText = mode.sub;
+      btn.appendChild(img);
+      btn.appendChild(label);
+      btn.appendChild(sub);
       this.app.appendChild(btn);
       this.addJumpyHover(btn, true);
 
@@ -350,17 +370,189 @@ export class Menu {
         btn.classList.add('visible');
       });
 
-      btn.addEventListener('click', () => {
-        if (mode.text === '经典模式') {
-          this.showLevelSelect();
-        } else {
-          console.log(`Selected mode: ${mode.text}`);
-        }
-      });
+      btn.addEventListener('click', mode.action);
     });
   }
 
-  private showLevelSelect(initialLevelIndex: number = 0, initialWorldPos?: {x: number, y: number}) {
+  // ---- Multiplayer ----
+
+  /** Opening a shared link (…/?room=1234) joins the room directly, no dialogs. */
+  private autoJoinFromUrl() {
+    if (!__MULTIPLAYER__) return;
+    const room = new URLSearchParams(window.location.search).get('room');
+    if (!room) return;
+
+    const session = new MultiplayerSession();
+    this.session = session;
+    session.onDisconnected = (reason) => this.handleMpDisconnect(reason);
+
+    const status = document.createElement('div');
+    status.id = 'mp-autojoin-status';
+    status.style.cssText = 'position:absolute;top:280px;left:50%;transform:translateX(-50%);font-family:Pixel;font-size:20px;color:#55371d;z-index:50;';
+    status.innerText = `正在加入房间 ${room}…`;
+    this.app.appendChild(status);
+
+    session.onJoined = (info) => {
+      if (!info.isHost) {
+        status.remove();
+        this.showLevelSelect(0, undefined, session);
+      }
+    };
+    session.onError = (msg) => {
+      status.remove();
+      session.leave();
+      if (this.session === session) this.session = null;
+      alert(`加入房间失败：${msg}`);
+    };
+
+    session.joinRoom(room);
+  }
+
+  private getMpWorldFlags(): WorldFlags {
+    return {
+      completedLevels: progressManager.getCompletedLevels(),
+      chestOpened: progressManager.isChestOpened(),
+      completedGeneratedLevels: progressManager.getCompletedGeneratedLevels(),
+    };
+  }
+
+  private showMpUnavailable() {
+    const { paper } = createDialog(this.app, '联机不可用');
+    const tip = document.createElement('div');
+    tip.className = 'mp-dialog-text';
+    tip.style.textAlign = 'left';
+    tip.innerHTML = '当前网页是纯单机版（静态托管）。<br><br>要联机，请在本地运行服务器：<br>1. 克隆本仓库并 <b>bun install</b><br>2. <b>bun run build</b><br>3. <b>bun run server</b><br>4. 双方打开终端显示的局域网地址';
+    paper.appendChild(tip);
+  }
+
+  private startCreateRoom() {
+    const session = new MultiplayerSession();
+    this.session = session;
+    session.onDisconnected = (reason) => this.handleMpDisconnect(reason);
+
+    const { shade, paper } = createDialog(this.app, '创建房间', () => {
+      if (this.session === session) {
+        session.leave();
+        this.session = null;
+      }
+    });
+
+    const status = document.createElement('div');
+    status.className = 'mp-dialog-text';
+    status.innerText = '正在连接服务器…';
+    paper.appendChild(status);
+
+    session.onJoined = (info) => {
+      status.innerText = '等待玩家加入…';
+      const link = `${window.location.origin}/?room=${info.room}`;
+      const row = document.createElement('div');
+      row.className = 'settings-row';
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.value = link;
+      input.readOnly = true;
+      const copyBtn = document.createElement('button');
+      copyBtn.innerText = '复制链接';
+      copyBtn.onclick = () => {
+        navigator.clipboard.writeText(link).then(() => {
+          copyBtn.innerText = '已复制';
+        }).catch(() => {});
+      };
+      row.appendChild(input);
+      row.appendChild(copyBtn);
+      paper.appendChild(row);
+    };
+
+    session.onPeerJoined = () => {
+      shade.remove();
+      this.showLevelSelect(0, undefined, session);
+    };
+
+    session.onError = (msg) => {
+      status.innerText = msg;
+    };
+
+    session.createRoom(settingsManager.currentSettings.mapSeed, this.getMpWorldFlags());
+  }
+
+  private startJoinRoom() {
+    const session = new MultiplayerSession();
+    this.session = session;
+    session.onDisconnected = (reason) => this.handleMpDisconnect(reason);
+
+    const { shade, paper } = createDialog(this.app, '加入房间', () => {
+      if (this.session === session) {
+        session.leave();
+        this.session = null;
+      }
+    });
+
+    const row = document.createElement('div');
+    row.className = 'settings-row';
+    const label = document.createElement('label');
+    label.innerText = '房间链接';
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.placeholder = '粘贴链接或输入房间号';
+    const urlRoom = new URLSearchParams(window.location.search).get('room');
+    if (urlRoom) input.value = urlRoom;
+    row.appendChild(label);
+    row.appendChild(input);
+    paper.appendChild(row);
+
+    const joinBtn = document.createElement('button');
+    joinBtn.innerText = '加入';
+    paper.appendChild(joinBtn);
+
+    const status = document.createElement('div');
+    status.className = 'mp-dialog-text';
+    paper.appendChild(status);
+
+    session.onJoined = (info) => {
+      if (!info.isHost) {
+        shade.remove();
+        this.showLevelSelect(0, undefined, session);
+      }
+    };
+    session.onError = (msg) => {
+      status.innerText = msg;
+    };
+
+    const doJoin = () => {
+      const raw = input.value.trim();
+      if (!raw) return;
+      const match = raw.match(/room=([0-9]+)/);
+      const code = match ? match[1] : raw;
+      status.innerText = '加入中…';
+      session.joinRoom(code);
+    };
+    joinBtn.onclick = doJoin;
+    input.onkeydown = (e) => {
+      if (e.key === 'Enter') doJoin();
+    };
+  }
+
+  private handleMpDisconnect(reason: DisconnectReason) {
+    const why = reason === 'hostLeft' ? '房主已离开，房间解散'
+      : reason === 'peerLeft' ? '对方已离开' : '连接已断开';
+    document.getElementById('mp-autojoin-status')?.remove();
+    if (this.mpCleanup) {
+      this.mpCleanup();
+      this.mpCleanup = null;
+    }
+    if (this.session) {
+      this.session.leave();
+      this.session = null;
+    }
+    Array.from(this.app.children).forEach(child => {
+      if (child instanceof HTMLElement && child.id !== 'game-container') {
+        child.style.display = '';
+      }
+    });
+    alert(`联机结束：${why}`);
+  }
+
+  private showLevelSelect(initialLevelIndex: number = 0, initialWorldPos?: {x: number, y: number}, session?: MultiplayerSession) {
     // Hide menu elements
     Array.from(this.app.children).forEach(child => {
       if (child instanceof HTMLElement) {
@@ -379,13 +571,63 @@ export class Menu {
       }
     }, () => {
       levelSelect.destroy();
+      if (session) {
+        session.leave();
+        if (this.session === session) this.session = null;
+        this.mpCleanup = null;
+      }
       // Show menu elements again
       Array.from(this.app.children).forEach(child => {
         if (child instanceof HTMLElement && child.id !== 'game-container') {
           child.style.display = '';
         }
       });
-    }, initialLevelIndex, initialWorldPos);
+    }, initialLevelIndex, initialWorldPos, session, session ? (ref, returnPos) => {
+      levelSelect.destroy();
+      this.startMpGame(session, ref, returnPos);
+    } : undefined);
+
+    if (session) {
+      this.mpCleanup = () => levelSelect.destroy();
+      session.onLevelStart = (ref, spawns) => {
+        const returnPos = levelSelect.getCatTile();
+        levelSelect.destroy();
+        this.startMpGame(session, ref, returnPos, spawns);
+      };
+    }
+  }
+
+  private startMpGame(session: MultiplayerSession, ref: LevelRef, returnPos: { x: number; y: number }, spawns?: [Spawn, Spawn]) {
+    // Hide menu elements (already hidden when coming from the world map)
+    Array.from(this.app.children).forEach(child => {
+      if (child instanceof HTMLElement && child.id !== 'game-container') {
+        child.style.display = 'none';
+      }
+    });
+
+    const gameContainer = document.createElement('div');
+    gameContainer.id = 'game-container';
+    gameContainer.style.position = 'absolute';
+    gameContainer.style.top = '0';
+    gameContainer.style.left = '0';
+    gameContainer.style.width = '100%';
+    gameContainer.style.height = '100%';
+    gameContainer.style.zIndex = '200';
+    this.app.appendChild(gameContainer);
+
+    const controller = new GameController(gameContainer, () => {
+      controller.destroy();
+      gameContainer.remove();
+      this.mpCleanup = null;
+      session.sendExit(returnPos.x, returnPos.y);
+      this.showLevelSelect(0, returnPos, session);
+    }, { session, ref, spawns: spawns ?? null, returnPos });
+
+    this.mpCleanup = () => {
+      controller.destroy();
+      gameContainer.remove();
+    };
+    controller.loadMultiplayerLevel(ref);
   }
 
   private startGame(levelIndex: number) {

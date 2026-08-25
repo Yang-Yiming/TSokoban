@@ -3,12 +3,24 @@ import { TILE_MASK } from './types';
 import { myRand } from '../utils';
 import { themeManager } from '../theme';
 
+export interface CatRenderState {
+    orientation: number,
+    isMoving: boolean,
+    progress: number,
+    moveDir: { x: number, y: number },
+    pushedBox: { x: number, y: number } | null
+    /** Peer only: tile the peer cat stands on (local player's tile comes from the map). */
+    tileX?: number,
+    tileY?: number,
+}
+
 export class GameScene {
     private canvas: HTMLCanvasElement;
     private ctx: CanvasRenderingContext2D;
     private topCanvas: HTMLCanvasElement;
     private topCtx: CanvasRenderingContext2D;
     private playerImg: HTMLImageElement;
+    private peerImg: HTMLImageElement;
     private tileSize: number = 55;
     private anchorX: number = 0;
     private anchorY: number = 0;
@@ -41,6 +53,13 @@ export class GameScene {
         this.playerImg.style.display = 'none';
         this.playerImg.style.zIndex = '1';
 
+        this.peerImg = document.createElement('img');
+        this.peerImg.style.position = 'absolute';
+        this.peerImg.style.pointerEvents = 'none';
+        this.peerImg.style.imageRendering = 'pixelated';
+        this.peerImg.style.display = 'none';
+        this.peerImg.style.zIndex = '1';
+
         this.canvas.style.position = 'absolute';
         this.canvas.style.zIndex = '0';
         
@@ -50,6 +69,7 @@ export class GameScene {
 
         container.appendChild(this.canvas);
         container.appendChild(this.playerImg);
+        container.appendChild(this.peerImg);
         container.appendChild(this.topCanvas);
 
         this.resize(container);
@@ -219,13 +239,7 @@ export class GameScene {
         }, 30);
     }
 
-    render(map: SokobanMap, playerState?: { 
-        orientation: number, 
-        isMoving: boolean,
-        progress: number,
-        moveDir: { x: number, y: number },
-        pushedBox: { x: number, y: number } | null
-    }) {
+    render(map: SokobanMap, playerState?: CatRenderState, peerState?: CatRenderState) {
         this.currentMap = map;
         this.ctx.imageSmoothingEnabled = false;
         this.topCtx.imageSmoothingEnabled = false;
@@ -255,15 +269,29 @@ export class GameScene {
                 px -= Math.floor(playerState.moveDir.x * offset);
                 py -= Math.floor(playerState.moveDir.y * offset);
             }
-            this.drawPlayer(px, py, playerState);
+            this.drawCatOnImg(this.playerImg, px, py, playerState);
         } else {
             this.playerImg.style.display = 'none';
+        }
+
+        // Layer 3.5: Peer player (multiplayer)
+        if (peerState && peerState.tileX !== undefined && peerState.tileY !== undefined) {
+            let qx = Math.floor(this.anchorX + peerState.tileX * this.tileSize);
+            let qy = Math.floor(this.anchorY + peerState.tileY * this.tileSize);
+            if (peerState.progress < 1) {
+                const offset = (1 - peerState.progress) * this.tileSize;
+                qx -= Math.floor(peerState.moveDir.x * offset);
+                qy -= Math.floor(peerState.moveDir.y * offset);
+            }
+            this.drawCatOnImg(this.peerImg, qx, qy, peerState);
+        } else {
+            this.peerImg.style.display = 'none';
         }
 
         // Layer 4: Objects (Walls, Boxes) (Top Canvas)
         for (let y = 0; y < map.getHeight(); y++) {
             for (let x = 0; x < map.getWidth(); x++) {
-                this.drawObject(x, y, map, playerState);
+                this.drawObject(x, y, map, playerState, peerState);
             }
         }
 
@@ -428,13 +456,7 @@ export class GameScene {
         }
     }
 
-    private drawObject(x: number, y: number, map: SokobanMap, playerState?: { 
-        orientation: number, 
-        isMoving: boolean,
-        progress: number,
-        moveDir: { x: number, y: number },
-        pushedBox: { x: number, y: number } | null
-    }) {
+    private drawObject(x: number, y: number, map: SokobanMap, playerState?: CatRenderState, peerState?: CatRenderState) {
         const tx = Math.floor(this.anchorX + x * this.tileSize);
         const ty = Math.floor(this.anchorY + y * this.tileSize);
         const tile = map.getTile(x, y);
@@ -453,18 +475,22 @@ export class GameScene {
             if (img) {
                 let bx = tx;
                 let by = ty;
-                if (playerState && playerState.pushedBox && playerState.pushedBox.x === x && playerState.pushedBox.y === y && playerState.progress < 1) {
-                    const offset = (1 - playerState.progress) * this.tileSize;
-                    bx -= Math.floor(playerState.moveDir.x * offset);
-                    by -= Math.floor(playerState.moveDir.y * offset);
-                }
+                const interp = (state?: CatRenderState) => {
+                    if (state && state.pushedBox && state.pushedBox.x === x && state.pushedBox.y === y && state.progress < 1) {
+                        const offset = (1 - state.progress) * this.tileSize;
+                        bx -= Math.floor(state.moveDir.x * offset);
+                        by -= Math.floor(state.moveDir.y * offset);
+                    }
+                };
+                interp(playerState);
+                interp(peerState);
                 const boxHeight = Math.floor(this.tileSize * 1.3);
                 this.topCtx.drawImage(img, bx, by - Math.floor(this.tileSize * 0.3), this.tileSize, boxHeight);
             }
         }
     }
 
-    private drawPlayer(tx: number, ty: number, state?: { orientation: number, isMoving: boolean, progress?: number }) {
+    private drawCatOnImg(img: HTMLImageElement, tx: number, ty: number, state?: { orientation: number, isMoving: boolean, progress?: number }) {
         const orientation = state?.orientation ?? 2; // Default down
         const isMoving = state?.isMoving ?? false;
         
@@ -484,15 +510,27 @@ export class GameScene {
         }
 
         // Update DOM element
-        this.playerImg.style.display = 'block';
-        if (this.playerImg.src !== window.location.origin + imgPath) {
-            this.playerImg.src = imgPath;
+        img.style.display = 'block';
+        if (img.src !== window.location.origin + imgPath) {
+            img.src = imgPath;
         }
-        this.playerImg.style.left = `${tx}px`;
-        this.playerImg.style.top = `${ty}px`;
-        this.playerImg.style.width = `${this.tileSize}px`;
-        this.playerImg.style.height = `${this.tileSize}px`;
-        this.playerImg.style.transform = scaleX === -1 ? 'scaleX(-1)' : 'none';
+        img.style.left = `${tx}px`;
+        img.style.top = `${ty}px`;
+        img.style.width = `${this.tileSize}px`;
+        img.style.height = `${this.tileSize}px`;
+        img.style.transform = scaleX === -1 ? 'scaleX(-1)' : 'none';
+    }
+
+    setPeerVisible(visible: boolean) {
+        this.peerImg.style.display = visible ? 'block' : 'none';
+    }
+
+    setPlayerTint(filter: string | null) {
+        this.playerImg.style.filter = filter ?? '';
+    }
+
+    setPeerTint(filter: string | null) {
+        this.peerImg.style.filter = filter ?? '';
     }
 
     private getWallImagePath(x: number, y: number, map: SokobanMap): string {
@@ -527,6 +565,7 @@ export class GameScene {
         }
         themeManager.removeListener(this.themeListener);
         this.playerImg.remove();
+        this.peerImg.remove();
         this.canvas.remove();
         this.topCanvas.remove();
     }

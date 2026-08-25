@@ -2,6 +2,7 @@ import { myRand, randColorBiome } from '../utils';
 import { MAP_DATA } from './mapData';
 import { showThemeDialog } from '../ui/themeDialog';
 import { showSettingsDialog } from '../ui/settingsDialog';
+import { createDialog } from '../ui/dialog';
 import { themeManager, THEMES } from '../theme';
 import { progressManager } from '../progress';
 import { settingsManager } from '../settings';
@@ -11,6 +12,9 @@ import { applyStructuresToGrid, registerStructure, resolveSpecialLevelIdAt, reso
 import { lakeIslandStructure } from './structures';
 import type { Equipment } from './types';
 import type { GeneratedLevelMeta } from './puzzleGenerator';
+import type { MultiplayerSession, PeerWorldState } from '../net/MultiplayerSession';
+import { PEER_TINT } from '../net/protocol';
+import type { Dir, LevelRef, WorldFlags } from '../net/protocol';
 
 registerStructure(lakeIslandStructure);
 
@@ -79,7 +83,18 @@ export class LevelSelect {
 
     private generatedPuzzleCache: Map<string, { data: number[][], meta: GeneratedLevelMeta }> = new Map();
 
-    constructor(container: HTMLElement, onLevelSelect: (levelIndex: number, generatedData?: number[][], generatedMeta?: GeneratedLevelMeta, specialLevelId?: string, returnWorldPos?: {x: number, y: number}) => void, onBack: () => void, initialLevelIndex: number = 0, initialWorldPos?: {x: number, y: number}) {
+    // Multiplayer state
+    private session?: MultiplayerSession;
+    private onMpLevelSelect?: (ref: LevelRef, returnPos: { x: number; y: number }) => void;
+    private mpWorldFlags: WorldFlags | null = null;
+    private peerImg: HTMLImageElement;
+    private currentPeerImgPath: string = '';
+    private peerState: PeerWorldState | null = null;
+    private peerAnim: { fromX: number; fromY: number; toX: number; toY: number; start: number } | null = null;
+    private pendingGuestSpawn = false;
+    private readyDialog: HTMLElement | null = null;
+
+    constructor(container: HTMLElement, onLevelSelect: (levelIndex: number, generatedData?: number[][], generatedMeta?: GeneratedLevelMeta, specialLevelId?: string, returnWorldPos?: {x: number, y: number}) => void, onBack: () => void, initialLevelIndex: number = 0, initialWorldPos?: {x: number, y: number}, session?: MultiplayerSession, onMpLevelSelect?: (ref: LevelRef, returnPos: { x: number; y: number }) => void) {
         this.canvas = document.createElement('canvas');
         this.canvas.width = 800;
         this.canvas.height = 600;
@@ -102,6 +117,16 @@ export class LevelSelect {
         this.catImg.style.zIndex = '10';
         this.catImg.style.display = 'block';
         container.appendChild(this.catImg);
+
+        this.peerImg = document.createElement('img');
+        this.peerImg.style.position = 'absolute';
+        this.peerImg.style.pointerEvents = 'none';
+        this.peerImg.style.imageRendering = 'pixelated';
+        this.peerImg.style.width = `${this.nodeWidth}px`;
+        this.peerImg.style.height = `${this.nodeWidth}px`;
+        this.peerImg.style.zIndex = '10';
+        this.peerImg.style.display = 'none';
+        container.appendChild(this.peerImg);
 
         this.chestImg = document.createElement('img');
         this.chestImg.style.position = 'absolute';
@@ -128,6 +153,7 @@ export class LevelSelect {
             const current = progressManager.getEquipment();
             const next: Equipment = current === 'none' ? 'boat' : (current === 'boat' ? 'wing' : 'none');
             progressManager.setEquipment(next);
+            this.session?.sendEquip(next);
             this.updateEquipmentUI();
             this.draw();
         };
@@ -161,11 +187,35 @@ export class LevelSelect {
         this.anchorX = 800 / 2 - this.catX * this.nodeWidth - this.nodeWidth / 2;
         this.anchorY = 600 / 2 - this.catY * this.nodeWidth - this.nodeWidth / 2;
 
+        this.session = session;
+        this.onMpLevelSelect = onMpLevelSelect;
+        if (session) {
+            this.mpWorldFlags = session.worldFlags;
+            if (session.isGuest) {
+                // Guest cat wears the tint; its spawn is resolved once the host's position arrives.
+                this.catImg.style.filter = PEER_TINT;
+                this.catImg.style.display = 'none';
+                this.pendingGuestSpawn = true;
+            } else {
+                this.peerImg.style.filter = PEER_TINT;
+            }
+            session.onPeerWorldUpdate = (peer) => this.handlePeerWorldUpdate(peer);
+            session.onReadyPrompt = () => this.showReadyPrompt();
+            session.onReadyCancelled = () => this.closeReadyDialog();
+            // Restore the peer's latest known state (e.g. when coming back from a level).
+            if (session.peer) {
+                this.handlePeerWorldUpdate(session.peer);
+            }
+        }
+
         this.boundKeyDown = (e: KeyboardEvent) => {
             if (e.key === 'Escape') {
                 this.onBack();
+                return;
             }
-            
+
+            if (this.pendingGuestSpawn) return;
+
             const key = e.key.toLowerCase();
             const isMovementKey = ['w', 'a', 's', 'd', 'h', 'j', 'k', 'l'].includes(key)
                 || e.key.startsWith('Arrow');
@@ -189,7 +239,13 @@ export class LevelSelect {
                 this.tryEnterLevel(this.catX, this.catY);
                 return;
             } else if (key === 'p') {
-                this.onLevelSelect(-1, undefined, undefined, 'special_hard_1', { x: this.catX, y: this.catY });
+                if (this.session && this.onMpLevelSelect) {
+                    const ref: LevelRef = { kind: 'special', id: 'special_hard_1' };
+                    this.session.sendEnter(this.catX, this.catY);
+                    this.onMpLevelSelect(ref, { x: this.catX, y: this.catY });
+                } else {
+                    this.onLevelSelect(-1, undefined, undefined, 'special_hard_1', { x: this.catX, y: this.catY });
+                }
                 return;
             }
 
@@ -256,7 +312,7 @@ export class LevelSelect {
 
         // Add click listener for level selection
         this.canvas.addEventListener('click', (e) => {
-            if (this.isMoving) return;
+            if (this.isMoving || this.pendingGuestSpawn) return;
             
             // If moved more than 10px, it's a drag, not a click
             const dragDist = Math.sqrt(Math.pow(e.clientX - this.mouseDownX, 2) + Math.pow(e.clientY - this.mouseDownY, 2));
@@ -296,6 +352,9 @@ export class LevelSelect {
         const dist = Math.sqrt(dx * dx + dy * dy);
         if (dist === 0 && path.length === 0) return;
 
+        // Walking away cancels my pending ready request (peer's prompt closes too)
+        this.session?.cancelReady();
+
         this.isMoving = true;
         this.isMouseMoving = isMouse;
         this.moveProgress = 0;
@@ -316,6 +375,10 @@ export class LevelSelect {
     }
 
     private tryEnterLevel(tileX: number, tileY: number) {
+        if (this.session && this.onMpLevelSelect) {
+            this.tryEnterLevelMp(tileX, tileY);
+            return;
+        }
         const val = this.getTileAt(tileX, tileY);
         if (val > 0 && val < this.GENERATED_LEVEL) {
             // Handcrafted level
@@ -349,6 +412,194 @@ export class LevelSelect {
         }
     }
 
+    // ---- Multiplayer: level entry & ready-check ----
+
+    private levelRefAt(tileX: number, tileY: number): LevelRef | null {
+        const val = this.getTileAt(tileX, tileY);
+        if (val > 0 && val < this.GENERATED_LEVEL) {
+            return { kind: 'handcrafted', index: val - 1 };
+        }
+        if (val === this.SPECIAL_LEVEL) {
+            const mapSeed = parseInt(settingsManager.currentSettings.mapSeed, 10) || 0;
+            const id = resolveSpecialLevelIdAt(tileX, tileY, mapSeed);
+            return id ? { kind: 'special', id } : null;
+        }
+        if (val === this.GENERATED_LEVEL) {
+            const key = `${tileX},${tileY}`;
+            let cached = this.generatedPuzzleCache.get(key);
+            if (!cached) {
+                const seed = parseInt(settingsManager.currentSettings.mapSeed) || 0;
+                const difficulty = this.getDifficultyAt(tileX, tileY);
+                const result = generatePuzzle(tileX, tileY, seed, difficulty);
+                if (!result) {
+                    this.setTileAt(tileX, tileY, 0);
+                    return null;
+                }
+                cached = result;
+                this.generatedPuzzleCache.set(key, result);
+            }
+            return { kind: 'generated', x: tileX, y: tileY, data: cached.data, meta: cached.meta };
+        }
+        return null;
+    }
+
+    private tryEnterLevelMp(tileX: number, tileY: number) {
+        const ref = this.levelRefAt(tileX, tileY);
+        if (!ref || !this.session || !this.onMpLevelSelect) return;
+
+        const peer = this.peerState;
+        const sharedTile = !!(peer && !peer.inLevel && peer.x === tileX && peer.y === tileY);
+        if (sharedTile) {
+            // Both cats on the tile: start the ready-check handshake.
+            if (this.session.requestReady(ref)) {
+                this.showReadyWaiting();
+            }
+        } else {
+            // Solo entry — the peer will see this cat standing on the tile.
+            this.session.sendEnter(tileX, tileY);
+            this.onMpLevelSelect(ref, { x: tileX, y: tileY });
+        }
+    }
+
+    private showReadyWaiting() {
+        if (!this.uiOverlay) return;
+        this.closeReadyDialog();
+        const { shade, paper } = createDialog(this.uiOverlay!, '共同进入', () => {
+            this.session?.cancelReady();
+        });
+        const text = document.createElement('div');
+        text.className = 'mp-dialog-text';
+        text.innerText = '等待对方确认…（1/2）';
+        paper.appendChild(text);
+        this.readyDialog = shade;
+    }
+
+    private showReadyPrompt() {
+        if (!this.uiOverlay) return;
+        this.closeReadyDialog();
+        const { shade, paper } = createDialog(this.uiOverlay!, '共同进入', () => {
+            this.session?.declineReady();
+        });
+        const text = document.createElement('div');
+        text.className = 'mp-dialog-text';
+        text.innerText = '对方想一起进入这个关卡';
+        paper.appendChild(text);
+
+        const row = document.createElement('div');
+        row.className = 'settings-row';
+        const okBtn = document.createElement('button');
+        okBtn.innerText = '确认';
+        okBtn.onclick = () => {
+            this.session?.acceptReady();
+            this.closeReadyDialog();
+        };
+        const noBtn = document.createElement('button');
+        noBtn.innerText = '取消';
+        noBtn.style.color = 'red';
+        noBtn.onclick = () => {
+            this.session?.declineReady();
+            this.closeReadyDialog();
+        };
+        row.appendChild(okBtn);
+        row.appendChild(noBtn);
+        paper.appendChild(row);
+        this.readyDialog = shade;
+    }
+
+    private closeReadyDialog() {
+        if (this.readyDialog) {
+            this.readyDialog.remove();
+            this.readyDialog = null;
+        }
+    }
+
+    // ---- Multiplayer: peer world state ----
+
+    private sendPos() {
+        if (!this.session) return;
+        this.session.sendPos(this.catX, this.catY, this.catDir, progressManager.getEquipment());
+    }
+
+    private handlePeerWorldUpdate(peer: PeerWorldState) {
+        const prev = this.peerState;
+        this.peerState = peer;
+        if (peer.inLevel) {
+            this.peerAnim = null;
+        } else if (prev && (prev.x !== peer.x || prev.y !== peer.y)) {
+            const fromX = this.peerAnim ? this.peerAnim.toX : prev.x;
+            const fromY = this.peerAnim ? this.peerAnim.toY : prev.y;
+            this.peerAnim = { fromX, fromY, toX: peer.x, toY: peer.y, start: performance.now() };
+        }
+        if (this.pendingGuestSpawn && !peer.inLevel) {
+            this.resolveGuestSpawn(peer.x, peer.y);
+        }
+    }
+
+    /** Guest: pick a walkable tile next to the host to spawn on. */
+    private resolveGuestSpawn(hostX: number, hostY: number) {
+        this.pendingGuestSpawn = false;
+        let spawn: { x: number; y: number } | null = null;
+        const visited = new Set<string>([`${hostX},${hostY}`]);
+        const queue = [{ x: hostX, y: hostY }];
+        while (queue.length > 0 && !spawn) {
+            const cur = queue.shift()!;
+            for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+                const nx = cur.x + dx;
+                const ny = cur.y + dy;
+                const k = `${nx},${ny}`;
+                if (visited.has(k)) continue;
+                visited.add(k);
+                const tile = this.getTileAt(nx, ny);
+                if (tile === this.WATER || tile === this.ROCK || tile === this.CHEST) continue;
+                if (!spawn) spawn = { x: nx, y: ny };
+                queue.push({ x: nx, y: ny });
+            }
+        }
+        const target = spawn ?? { x: hostX, y: hostY };
+        this.catX = target.x;
+        this.catY = target.y;
+        this.anchorX = 800 / 2 - this.catX * this.nodeWidth - this.nodeWidth / 2;
+        this.anchorY = 600 / 2 - this.catY * this.nodeWidth - this.nodeWidth / 2;
+        this.catImg.style.display = 'block';
+        this.sendPos();
+    }
+
+    private drawPeer() {
+        const peer = this.peerState;
+        if (!peer || !this.session) {
+            this.peerImg.style.display = 'none';
+            return;
+        }
+        let x = peer.x;
+        let y = peer.y;
+        let progress = 1;
+        if (this.peerAnim) {
+            progress = Math.min(1, (performance.now() - this.peerAnim.start) / this.MOVE_DURATION_PER_TILE);
+            if (progress >= 1) {
+                this.peerAnim = null;
+            } else {
+                x = this.peerAnim.fromX + (this.peerAnim.toX - this.peerAnim.fromX) * progress;
+                y = this.peerAnim.fromY + (this.peerAnim.toY - this.peerAnim.fromY) * progress;
+            }
+        }
+        const screenX = this.anchorX + x * this.nodeWidth;
+        const screenY = this.anchorY + y * this.nodeWidth;
+        const tile = this.getTileAt(Math.round(x), Math.round(y));
+        const { path, flip } = this.pickCatSprite(peer.equipment, peer.dir, progress < 1, false, tile);
+        if (this.currentPeerImgPath !== path) {
+            this.currentPeerImgPath = path;
+            this.peerImg.src = path;
+        }
+        this.peerImg.style.left = `${screenX}px`;
+        this.peerImg.style.top = `${screenY}px`;
+        this.peerImg.style.transform = flip ? 'scaleX(-1)' : 'none';
+        this.peerImg.style.display = 'block';
+    }
+
+    getCatTile(): { x: number; y: number } {
+        return { x: this.catX, y: this.catY };
+    }
+
     private getDifficultyAt(x: number, y: number): number {
         const dist = Math.sqrt(x * x + y * y);
         if (dist < 30) return 1;
@@ -375,6 +626,7 @@ export class LevelSelect {
                 this.catX = this.moveTargetX;
                 this.catY = this.moveTargetY;
                 this.moveProgress = 0;
+                if (this.session) this.sendPos();
                 
                 if (this.movePath.length > 0) {
                     const next = this.movePath.shift()!;
@@ -459,11 +711,11 @@ export class LevelSelect {
         const dy = Math.abs(this.catY - chestY);
 
         if ((dx === 1 && dy === 0) || (dx === 0 && dy === 1)) {
-            const level16Completed = progressManager.isLevelCompleted(15);
-            const chestOpened = progressManager.isChestOpened();
+            const level16Completed = this.worldLevelCompleted(15);
+            const chestOpened = this.worldChestOpened();
 
             if (!chestOpened && !this.isChestOpening) {
-                if (level16Completed) {
+                if (level16Completed && (!this.session || this.session.isHost)) {
                     // Start opening animation
                     this.isChestOpening = true;
                     // Force a source reset to ensure gif plays from start
@@ -573,6 +825,9 @@ export class LevelSelect {
         this.updateEquipmentUI();
         this.updateFishCountUI();
         this.draw();
+        if (this.session && !this.pendingGuestSpawn) {
+            this.sendPos();
+        }
     }
 
     private updateEquipmentUI() {
@@ -685,6 +940,30 @@ export class LevelSelect {
         return null;
     }
 
+    // ---- World-truth helpers: guests render the HOST's world flags ----
+
+    private worldLevelCompleted(index: number): boolean {
+        if (this.mpWorldFlags) return this.mpWorldFlags.completedLevels.includes(index);
+        return progressManager.isLevelCompleted(index);
+    }
+
+    private worldAllLevelsCompleted(upTo: number): boolean {
+        for (let i = 0; i <= upTo; i++) {
+            if (!this.worldLevelCompleted(i)) return false;
+        }
+        return true;
+    }
+
+    private worldChestOpened(): boolean {
+        if (this.mpWorldFlags) return this.mpWorldFlags.chestOpened;
+        return progressManager.isChestOpened();
+    }
+
+    private worldGeneratedCompleted(x: number, y: number): boolean {
+        if (this.mpWorldFlags) return this.mpWorldFlags.completedGeneratedLevels.includes(`${x},${y}`);
+        return progressManager.isGeneratedLevelCompleted(x, y);
+    }
+
     private getInitialTileState(x: number, y: number): number {
         // 1. Level placement (Deterministic but scattered)
         const index = Math.round(x / this.LEVEL_SPACING);
@@ -692,7 +971,7 @@ export class LevelSelect {
 
         // Logic: 1-15 (0-14) always accessible. 16+ (15+) only if 1-15 are completed.
         if (isLevelColumn && index >= 15) {
-            if (!progressManager.allLevelsCompleted(14)) {
+            if (!this.worldAllLevelsCompleted(14)) {
                 isLevelColumn = false;
             }
         }
@@ -712,7 +991,7 @@ export class LevelSelect {
         // 1b. Generated level placement (cell-based, beyond handcrafted area)
         const genLevel = this.getGeneratedLevelAt(x, y);
         if (genLevel) {
-            if (progressManager.isGeneratedLevelCompleted(x, y)) {
+            if (this.worldGeneratedCompleted(x, y)) {
                 return this.DECORATION;
             }
             return this.GENERATED_LEVEL;
@@ -1191,6 +1470,7 @@ export class LevelSelect {
 
         // 3. Draw Cat
         this.drawCat();
+        this.drawPeer();
 
         // 4. Draw Chest
         this.drawChest();
@@ -1232,76 +1512,78 @@ export class LevelSelect {
         const screenX = this.anchorX + currentX * this.nodeWidth;
         const screenY = this.anchorY + currentY * this.nodeWidth;
         
-        let imgPath = '';
-        let flip = false;
         const equipment = progressManager.getEquipment();
         const tileAtCurrent = this.getTileAt(Math.round(currentX), Math.round(currentY));
+        const { path, flip } = this.pickCatSprite(equipment, this.catDir, this.isMoving, this.isMouseMoving, tileAtCurrent);
 
-        if (equipment === 'boat' && tileAtCurrent === this.WATER) {
-            if (this.catDir === 'back') imgPath = '/assets/images/player_cat/cat_boat_up.gif';
-            else if (this.catDir === 'front') imgPath = '/assets/images/player_cat/cat_boat_down.gif';
-            else if (this.catDir === 'left') {
-                imgPath = '/assets/images/player_cat/cat_boat_right.gif';
-                flip = true;
-            }
-            else if (this.catDir === 'right') imgPath = '/assets/images/player_cat/cat_boat_right.gif';
-        } else if (equipment === 'wing') {
-            const isOverObstacle = tileAtCurrent === this.WATER || tileAtCurrent === this.ROCK || tileAtCurrent === this.CHEST;
-            if ((this.isMoving && this.isMouseMoving) || isOverObstacle) {
-                if (this.catDir === 'back') imgPath = '/assets/images/player_cat/cat_fly_up.gif';
-                else if (this.catDir === 'front') imgPath = '/assets/images/player_cat/cat_fly_down.gif';
-                else if (this.catDir === 'left') {
-                    imgPath = '/assets/images/player_cat/cat_fly_right.gif';
-                    flip = true;
-                }
-                else if (this.catDir === 'right') imgPath = '/assets/images/player_cat/cat_fly_right.gif';
-            } else {
-                // Normal run/stand on land or keyboard move
-                if (this.isMoving) {
-                    if (this.catDir === 'back') imgPath = '/assets/images/player_cat/cat_run_back.gif';
-                    else if (this.catDir === 'front') imgPath = '/assets/images/player_cat/cat_run_front.gif';
-                    else if (this.catDir === 'left') {
-                        imgPath = '/assets/images/player_cat/cat_run.gif';
-                        flip = true;
-                    }
-                    else if (this.catDir === 'right') imgPath = '/assets/images/player_cat/cat_run.gif';
-                } else {
-                    if (this.catDir === 'back') imgPath = '/assets/images/player_cat/cat_stand_back.gif';
-                    else if (this.catDir === 'front') imgPath = '/assets/images/player_cat/cat_stand_front.gif';
-                    else if (this.catDir === 'left') {
-                        imgPath = '/assets/images/player_cat/cat_stand.gif';
-                        flip = true;
-                    }
-                    else if (this.catDir === 'right') imgPath = '/assets/images/player_cat/cat_stand.gif';
-                }
-            }
-        } else {
-            if (this.isMoving) {
-                if (this.catDir === 'back') imgPath = '/assets/images/player_cat/cat_run_back.gif';
-                else if (this.catDir === 'front') imgPath = '/assets/images/player_cat/cat_run_front.gif';
-                else if (this.catDir === 'left') {
-                    imgPath = '/assets/images/player_cat/cat_run.gif';
-                    flip = true;
-                }
-                else if (this.catDir === 'right') imgPath = '/assets/images/player_cat/cat_run.gif';
-            } else {
-                if (this.catDir === 'back') imgPath = '/assets/images/player_cat/cat_stand_back.gif';
-                else if (this.catDir === 'front') imgPath = '/assets/images/player_cat/cat_stand_front.gif';
-                else if (this.catDir === 'left') {
-                    imgPath = '/assets/images/player_cat/cat_stand.gif';
-                    flip = true;
-                }
-                else if (this.catDir === 'right') imgPath = '/assets/images/player_cat/cat_stand.gif';
-            }
-        }
-
-        if (this.currentCatImgPath !== imgPath) {
-            this.currentCatImgPath = imgPath;
-            this.catImg.src = imgPath;
+        if (this.currentCatImgPath !== path) {
+            this.currentCatImgPath = path;
+            this.catImg.src = path;
         }
         this.catImg.style.left = `${screenX}px`;
         this.catImg.style.top = `${screenY}px`;
         this.catImg.style.transform = flip ? 'scaleX(-1)' : 'none';
+    }
+
+    private pickCatSprite(equipment: Equipment, dir: Dir, isMoving: boolean, isMouseMoving: boolean, tileAtCurrent: number): { path: string; flip: boolean } {
+        let imgPath = '';
+        let flip = false;
+
+        if (equipment === 'boat' && tileAtCurrent === this.WATER) {
+            if (dir === 'back') imgPath = '/assets/images/player_cat/cat_boat_up.gif';
+            else if (dir === 'front') imgPath = '/assets/images/player_cat/cat_boat_down.gif';
+            else if (dir === 'left') {
+                imgPath = '/assets/images/player_cat/cat_boat_right.gif';
+                flip = true;
+            }
+            else imgPath = '/assets/images/player_cat/cat_boat_right.gif';
+        } else if (equipment === 'wing') {
+            const isOverObstacle = tileAtCurrent === this.WATER || tileAtCurrent === this.ROCK || tileAtCurrent === this.CHEST;
+            if ((isMoving && isMouseMoving) || isOverObstacle) {
+                if (dir === 'back') imgPath = '/assets/images/player_cat/cat_fly_up.gif';
+                else if (dir === 'front') imgPath = '/assets/images/player_cat/cat_fly_down.gif';
+                else if (dir === 'left') {
+                    imgPath = '/assets/images/player_cat/cat_fly_right.gif';
+                    flip = true;
+                }
+                else imgPath = '/assets/images/player_cat/cat_fly_right.gif';
+            } else if (isMoving) {
+                if (dir === 'back') imgPath = '/assets/images/player_cat/cat_run_back.gif';
+                else if (dir === 'front') imgPath = '/assets/images/player_cat/cat_run_front.gif';
+                else if (dir === 'left') {
+                    imgPath = '/assets/images/player_cat/cat_run.gif';
+                    flip = true;
+                }
+                else imgPath = '/assets/images/player_cat/cat_run.gif';
+            } else {
+                if (dir === 'back') imgPath = '/assets/images/player_cat/cat_stand_back.gif';
+                else if (dir === 'front') imgPath = '/assets/images/player_cat/cat_stand_front.gif';
+                else if (dir === 'left') {
+                    imgPath = '/assets/images/player_cat/cat_stand.gif';
+                    flip = true;
+                }
+                else imgPath = '/assets/images/player_cat/cat_stand.gif';
+            }
+        } else {
+            if (isMoving) {
+                if (dir === 'back') imgPath = '/assets/images/player_cat/cat_run_back.gif';
+                else if (dir === 'front') imgPath = '/assets/images/player_cat/cat_run_front.gif';
+                else if (dir === 'left') {
+                    imgPath = '/assets/images/player_cat/cat_run.gif';
+                    flip = true;
+                }
+                else imgPath = '/assets/images/player_cat/cat_run.gif';
+            } else {
+                if (dir === 'back') imgPath = '/assets/images/player_cat/cat_stand_back.gif';
+                else if (dir === 'front') imgPath = '/assets/images/player_cat/cat_stand_front.gif';
+                else if (dir === 'left') {
+                    imgPath = '/assets/images/player_cat/cat_stand.gif';
+                    flip = true;
+                }
+                else imgPath = '/assets/images/player_cat/cat_stand.gif';
+            }
+        }
+        return { path: imgPath, flip };
     }
 
     private drawGrass(dx: number, dy: number) {
@@ -1356,6 +1638,12 @@ export class LevelSelect {
     }
 
     public destroy() {
+        if (this.session) {
+            this.session.onPeerWorldUpdate = () => {};
+            this.session.onReadyPrompt = () => {};
+            this.session.onReadyCancelled = () => {};
+        }
+        this.closeReadyDialog();
         window.removeEventListener('keydown', this.boundKeyDown);
         themeManager.removeListener(this.themeListener);
         if (this.structureDiscoverTimeout) {
@@ -1366,6 +1654,7 @@ export class LevelSelect {
             this.uiOverlay.remove();
         }
         this.catImg.remove();
+        this.peerImg.remove();
         this.chestImg.remove();
         this.equipmentImg.remove();
         this.fishCountEl.remove();

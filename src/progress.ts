@@ -67,6 +67,14 @@ class ProgressManager {
         return this.progress.completedLevels.includes(index);
     }
 
+    getCompletedLevels(): number[] {
+        return [...this.progress.completedLevels];
+    }
+
+    getCompletedGeneratedLevels(): string[] {
+        return [...this.progress.completedGeneratedLevels];
+    }
+
     allLevelsCompleted(upToIndex: number): boolean {
         for (let i = 0; i <= upToIndex; i++) {
             if (!this.isLevelCompleted(i)) return false;

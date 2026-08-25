@@ -1,4 +1,4 @@
-export function createDialog(container: HTMLElement, title: string) {
+export function createDialog(container: HTMLElement, title: string, onClose?: () => void) {
   const shade = document.createElement('div');
   shade.className = 'dialog-shade';
   
@@ -17,6 +17,7 @@ export function createDialog(container: HTMLElement, title: string) {
   closeBtn.appendChild(closeImg);
   closeBtn.onclick = () => {
     shade.remove();
+    onClose?.();
   };
   paper.appendChild(closeBtn);
   

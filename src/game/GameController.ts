@@ -1,13 +1,27 @@
 import { SokobanMap } from './SokobanMap';
 import { GameScene } from './GameScene';
+import type { CatRenderState } from './GameScene';
 import { MAP_DATA, SPECIAL_LEVEL_LIBRARY } from './mapData';
 import { AStarSolver } from './AStarSolver';
 import type { GeneratedLevelMeta } from './puzzleGenerator';
+import { TILE_MASK } from './types';
+
+import type { MultiplayerSession } from '../net/MultiplayerSession';
+import type { LevelRef, Spawn } from '../net/protocol';
+import { PEER_TINT } from '../net/protocol';
 
 import { showThemeDialog } from '../ui/themeDialog';
 import { showSettingsDialog } from '../ui/settingsDialog';
 import { settingsManager } from '../settings';
 import { progressManager } from '../progress';
+
+export interface MpContext {
+    session: MultiplayerSession;
+    ref: LevelRef;
+    /** spawns[0] = host, spawns[1] = guest. Null for solo entries (peer not in this level). */
+    spawns: [Spawn, Spawn] | null;
+    returnPos: { x: number; y: number };
+}
 
 export class GameController {
     private currentMap: SokobanMap | null = null;
@@ -35,23 +49,42 @@ export class GameController {
     private eventListeners: { target: EventTarget, type: string, handler: any }[] = [];
     private currentOverlay: HTMLElement | null = null;
 
+    // Multiplayer state
+    private mp: MpContext | null = null;
+    private peerPos: { x: number, y: number } | null = null;
+    private peerOrientation: number = 2;
+    private peerAnim: { dx: number, dy: number, start: number } | null = null;
+    private peerLastPushed: { x: number, y: number } | null = null;
+    private winDeclared: boolean = false;
+
     private uiElements: {
         levelText: HTMLElement;
         stepText: HTMLElement;
         limitText: HTMLElement;
-        itemHintText: HTMLElement;
-        itemPlusText: HTMLElement;
-        itemUndoText: HTMLElement;
+        itemHintText?: HTMLElement;
+        itemPlusText?: HTMLElement;
+        itemUndoText?: HTMLElement;
     } | null = null;
 
     private onExit: (lastLevelIndex?: number) => void;
     private container: HTMLElement;
     private settingsListener: (settings: any) => void;
 
-    constructor(container: HTMLElement, onExit: (lastLevelIndex?: number) => void) {
+    constructor(container: HTMLElement, onExit: (lastLevelIndex?: number) => void, mp?: MpContext) {
         this.container = container;
         this.scene = new GameScene(container);
         this.onExit = onExit;
+        this.mp = mp ?? null;
+
+        if (this.mp) {
+            const { session } = this.mp;
+            session.onPeerMove = (dx, dy) => this.applyPeerMove(dx, dy);
+            session.onPeerWin = () => this.handlePeerWin();
+            session.onPeerRestart = () => this.doRestart(false);
+            // Guest cat wears the tint on both screens.
+            this.scene.setPlayerTint(session.isGuest ? PEER_TINT : null);
+            this.scene.setPeerTint(session.isHost ? PEER_TINT : null);
+        }
         
         this.settingsListener = (settings) => {
             this.moveAnimDuration = settings.moveAnimDuration;
@@ -69,6 +102,11 @@ export class GameController {
 
     public destroy() {
         this.isDestroyed = true;
+        if (this.mp) {
+            this.mp.session.onPeerMove = () => {};
+            this.mp.session.onPeerWin = () => {};
+            this.mp.session.onPeerRestart = () => {};
+        }
         if (this.bgmPlayOnceHandler) {
             window.removeEventListener('click', this.bgmPlayOnceHandler);
             this.bgmPlayOnceHandler = null;
@@ -120,13 +158,34 @@ export class GameController {
                     progress = 0;
                 }
 
+                let peerState: CatRenderState | undefined;
+                if (this.mp && this.peerPos) {
+                    let peerProgress = 1;
+                    if (this.peerAnim) {
+                        peerProgress = Math.min(1, (now - this.peerAnim.start) / this.moveAnimDuration);
+                        if (peerProgress >= 1) {
+                            this.peerAnim = null;
+                            this.peerLastPushed = null;
+                        }
+                    }
+                    peerState = {
+                        orientation: this.peerOrientation,
+                        isMoving: peerProgress < 1,
+                        progress: peerProgress,
+                        moveDir: this.peerAnim ? { x: this.peerAnim.dx, y: this.peerAnim.dy } : { x: 0, y: 0 },
+                        pushedBox: this.peerLastPushed,
+                        tileX: this.peerPos.x,
+                        tileY: this.peerPos.y
+                    };
+                }
+
                 this.scene.render(this.currentMap, {
                     orientation: this.playerOrientation,
                     isMoving: progress < 1,
                     progress: progress,
                     moveDir: this.lastMoveDir,
                     pushedBox: this.lastPushedBox
-                });
+                }, peerState);
             }
             requestAnimationFrame(loop);
         };
@@ -153,26 +212,86 @@ export class GameController {
 
             this.stepCount++;
             this.updateUI();
-
-            if (this.currentMap.isWin()) {
-                this.isGameOver = true;
-                this.moveQueue = [];
-                this.showWinAnimation(() => this.onExit(this.currentLevelIndex));
-            } else if (this.stepCount >= this.stepLimit) {
-                this.isGameOver = true;
-                this.moveQueue = [];
-                this.showLoseAnimation('晕', '好累……', () => this.reloadCurrentLevel());
-            } else if (this.isDeadlockDetected()) {
-                this.isGameOver = true;
-                this.moveQueue = [];
-                this.showLoseAnimation('菜', '有的猫活着……', () => this.reloadCurrentLevel());
-            }
+            this.mp?.session.sendMove(dx, dy);
+            this.checkEndOfMove();
             return true;
         } else {
             this.playerOrientation = orientation;
             this.moveQueue = [];
             return false;
         }
+    }
+
+    /** Win/step-limit/deadlock checks after any successful move (either player). */
+    private checkEndOfMove() {
+        if (!this.currentMap) return;
+        if (this.currentMap.isWin()) {
+            this.isGameOver = true;
+            this.moveQueue = [];
+            if (!this.winDeclared) {
+                this.winDeclared = true;
+                this.mp?.session.sendWin();
+            }
+            this.showWinAnimation(() => this.onExit(this.currentLevelIndex));
+        } else if (this.stepCount >= this.stepLimit) {
+            this.isGameOver = true;
+            this.moveQueue = [];
+            this.showLoseAnimation('晕', '好累……', () => this.afterLose());
+        } else if (this.isDeadlockDetected()) {
+            this.isGameOver = true;
+            this.moveQueue = [];
+            this.showLoseAnimation('菜', '有的猫活着……', () => this.afterLose());
+        }
+    }
+
+    private afterLose() {
+        if (this.mp) this.doRestart(true);
+        else this.reloadCurrentLevel();
+    }
+
+    /** Apply a peer's move to the shared map (peer cat is tracked outside SokobanMap). */
+    private applyPeerMove(dx: number, dy: number) {
+        if (!this.currentMap || !this.mp || this.isDestroyed || this.isGameOver || !this.peerPos) return;
+
+        const nx = this.peerPos.x + dx;
+        const ny = this.peerPos.y + dy;
+        if (this.currentMap.hasWall(nx, ny)) return;
+
+        let pushed: { x: number, y: number } | null = null;
+        if (this.currentMap.hasBox(nx, ny)) {
+            const bx = nx + dx;
+            const by = ny + dy;
+            if (this.currentMap.hasWall(bx, by) || this.currentMap.hasBox(bx, by)) return;
+            this.currentMap.setTile(nx, ny, this.currentMap.getTile(nx, ny) & ~TILE_MASK.BOX);
+            this.currentMap.setTile(bx, by, this.currentMap.getTile(bx, by) | TILE_MASK.BOX);
+            pushed = { x: bx, y: by };
+        }
+
+        this.peerAnim = { dx, dy, start: performance.now() };
+        this.peerLastPushed = pushed;
+        this.peerPos = { x: nx, y: ny };
+        this.peerOrientation = dy < 0 ? 1 : dy > 0 ? 2 : dx < 0 ? 3 : 4;
+
+        this.stepCount++;
+        this.updateUI();
+        this.checkEndOfMove();
+    }
+
+    private handlePeerWin() {
+        if (!this.currentMap || this.winDeclared) return;
+        this.winDeclared = true;
+        this.isGameOver = true;
+        this.moveQueue = [];
+        this.showWinAnimation(() => this.onExit(this.currentLevelIndex));
+    }
+
+    private doRestart(broadcast: boolean) {
+        if (!this.mp) {
+            this.reloadCurrentLevel();
+            return;
+        }
+        if (broadcast) this.mp.session.sendRestart();
+        this.loadMultiplayerLevel(this.mp.ref);
     }
 
     private reloadCurrentLevel() {
@@ -225,7 +344,7 @@ export class GameController {
         });
         uiOverlay.appendChild(topIcons);
 
-        // Bottom Left: Items
+        // Bottom Left: Items (undo/hint disabled in multiplayer)
         const itemBar = document.createElement('div');
         itemBar.className = 'ui-item-bar';
         const currentItems = progressManager.getItemCounts();
@@ -233,7 +352,7 @@ export class GameController {
             { id: 'hint', img: 'hint.png', count: currentItems.hint, action: () => this.useHint() },
             { id: 'plus', img: 'plus.png', count: currentItems.plus, action: () => this.usePlus() },
             { id: 'undo', img: 'withdraw.png', count: currentItems.undo, action: () => this.useUndo() }
-        ];
+        ].filter(item => !this.mp || item.id === 'plus');
 
         const itemTexts: any = {};
         items.forEach(item => {
@@ -324,12 +443,13 @@ export class GameController {
         this.uiElements.stepText.innerText = `移动步数: ${this.stepCount}`;
         this.uiElements.limitText.innerText = `步数限制: ${Number.isFinite(this.stepLimit) ? this.stepLimit : '∞'}`;
         const counts = progressManager.getItemCounts();
-        this.uiElements.itemHintText.innerText = `x${counts.hint}`;
-        this.uiElements.itemPlusText.innerText = `x${counts.plus}`;
-        this.uiElements.itemUndoText.innerText = `x${counts.undo}`;
+        if (this.uiElements.itemHintText) this.uiElements.itemHintText.innerText = `x${counts.hint}`;
+        if (this.uiElements.itemPlusText) this.uiElements.itemPlusText.innerText = `x${counts.plus}`;
+        if (this.uiElements.itemUndoText) this.uiElements.itemUndoText.innerText = `x${counts.undo}`;
     }
 
     private useHint() {
+        if (this.mp) return;
         const now = performance.now();
         if (progressManager.getItemCounts().hint <= 0 || !this.currentMap || this.isGameOver || (now - this.lastMoveTime < this.moveAnimDuration) || this.moveQueue.length > 0) return;
         
@@ -373,6 +493,7 @@ export class GameController {
     }
 
     private useUndo() {
+        if (this.mp) return;
         if (progressManager.getItemCounts().undo <= 0 || !this.currentMap) return;
         if (this.currentMap.undo()) {
             this.isGameOver = false;
@@ -509,6 +630,102 @@ export class GameController {
         this.updateUI();
     }
 
+    /**
+     * Multiplayer shared level: builds the map from a LevelRef (deterministic on
+     * both clients), overrides spawn points, uses optimalSteps + 25 as limit.
+     */
+    loadMultiplayerLevel(ref: LevelRef) {
+        if (!this.mp) return;
+        const mp = this.mp;
+
+        if (this.currentOverlay) {
+            this.currentOverlay.remove();
+            this.currentOverlay = null;
+        }
+
+        const fadeOverlay = document.createElement('div');
+        fadeOverlay.className = 'fade-in-overlay';
+        this.scene.getCanvas().parentElement?.appendChild(fadeOverlay);
+        setTimeout(() => {
+            fadeOverlay.classList.add('hide');
+            setTimeout(() => fadeOverlay.remove(), 1000);
+        }, 50);
+
+        this.isGeneratedLevel = false;
+        this.isSpecialLevel = false;
+        this.currentSpecialLevelId = null;
+        this.generatedLevelData = null;
+        this.generatedLevelMeta = null;
+
+        let data: number[][];
+        if (ref.kind === 'handcrafted') {
+            this.currentLevelIndex = ref.index;
+            data = MAP_DATA[ref.index];
+        } else if (ref.kind === 'special') {
+            const entry = SPECIAL_LEVEL_LIBRARY[ref.id];
+            if (!entry) return;
+            this.currentLevelIndex = -1;
+            this.isSpecialLevel = true;
+            this.currentSpecialLevelId = ref.id;
+            data = entry.data;
+        } else {
+            this.currentLevelIndex = -1;
+            this.isGeneratedLevel = true;
+            this.generatedLevelData = ref.data;
+            this.generatedLevelMeta = ref.meta;
+            data = ref.data;
+        }
+
+        this.currentMap = new SokobanMap(data);
+
+        this.stepCount = 0;
+        this.isGameOver = false;
+        this.moveQueue = [];
+        this.winDeclared = false;
+        this.peerAnim = null;
+        this.peerLastPushed = null;
+        this.peerOrientation = 2;
+
+        if (mp.spawns) {
+            // Shared session: strip the map's default player, place both cats.
+            const mySpawn = mp.spawns[mp.session.isHost ? 0 : 1];
+            const peerSpawn = mp.spawns[mp.session.isHost ? 1 : 0];
+            for (let y = 0; y < this.currentMap.getHeight(); y++) {
+                for (let x = 0; x < this.currentMap.getWidth(); x++) {
+                    if (this.currentMap.hasPlayer(x, y)) {
+                        this.currentMap.setTile(x, y, this.currentMap.getTile(x, y) & ~TILE_MASK.PLAYER);
+                    }
+                }
+            }
+            this.currentMap.setTile(mySpawn.x, mySpawn.y, this.currentMap.getTile(mySpawn.x, mySpawn.y) | TILE_MASK.PLAYER);
+            this.peerPos = { x: peerSpawn.x, y: peerSpawn.y };
+            this.scene.setPeerVisible(true);
+        } else {
+            // Solo entry in a multiplayer session: no peer cat in this level.
+            this.peerPos = null;
+            this.scene.setPeerVisible(false);
+        }
+
+        // Step limit: A* for static levels, generator meta for generated ones. +25 in MP.
+        if (ref.kind === 'generated' && typeof ref.meta.optimalSteps === 'number') {
+            this.optimalSteps = ref.meta.optimalSteps;
+            this.stepLimit = this.optimalSteps + 25;
+        } else {
+            const solver = new AStarSolver(this.currentMap);
+            const result = solver.solve(10000);
+            if (result.status === 'solved' && result.path) {
+                this.optimalSteps = result.path.length;
+                this.stepLimit = this.optimalSteps + 25;
+            } else {
+                this.optimalSteps = 0;
+                this.stepLimit = Number.POSITIVE_INFINITY;
+            }
+        }
+
+        this.scene.setInitialAnchor(this.currentMap);
+        this.updateUI();
+    }
+
     private setupInput() {
         const keyHandler = (e: KeyboardEvent) => {
             if (!this.currentMap || this.isDestroyed || this.isGameOver) return;
@@ -557,7 +774,8 @@ export class GameController {
                     moveResult = this.currentMap.movePlayer(dx, dy);
                     break;
                 case 'r':
-                    this.reloadCurrentLevel();
+                    if (this.mp) this.doRestart(true);
+                    else this.reloadCurrentLevel();
                     return;
                 case 'Escape':
                     this.destroy();
@@ -579,17 +797,8 @@ export class GameController {
 
                 this.stepCount++;
                 this.updateUI();
-                
-                if (this.currentMap.isWin()) {
-                    this.isGameOver = true;
-                    this.showWinAnimation(() => this.onExit(this.currentLevelIndex));
-                } else if (this.stepCount >= this.stepLimit) {
-                    this.isGameOver = true;
-                    this.showLoseAnimation('晕', '好累……', () => this.reloadCurrentLevel());
-                } else if (this.isDeadlockDetected()) {
-                    this.isGameOver = true;
-                    this.showLoseAnimation('菜', '有的猫活着……', () => this.reloadCurrentLevel());
-                }
+                this.mp?.session.sendMove(dx, dy);
+                this.checkEndOfMove();
             }
         };
         this.addManagedEventListener(window, 'keydown', keyHandler);
@@ -601,8 +810,9 @@ export class GameController {
         // Basic deadlock check (corners)
         if (this.currentMap.isDeadlock()) return true;
 
-        // Advanced A* deadlock check
-        if (settingsManager.currentSettings.useAStar) {
+        // Advanced A* deadlock check (disabled in multiplayer: the peer's cat
+        // breaks single-player solvability assumptions)
+        if (!this.mp && settingsManager.currentSettings.useAStar) {
             const solver = new AStarSolver(this.currentMap);
             // Use a smaller node limit for real-time check to avoid lag
             const result = solver.solve(2000); 
