@@ -4,7 +4,7 @@ import { showThemeDialog } from '../ui/themeDialog';
 import { showSettingsDialog } from '../ui/settingsDialog';
 import { createDialog } from '../ui/dialog';
 import { themeManager, THEMES } from '../theme';
-import { progressManager } from '../progress';
+import { characterManager, worldManager } from '../save';
 import { settingsManager } from '../settings';
 import { generatePuzzle } from './puzzleGenerator';
 import { getBiomeAt, getAllBiomeSpritesPaths } from './biomes';
@@ -14,7 +14,7 @@ import type { Equipment } from './types';
 import type { GeneratedLevelMeta } from './puzzleGenerator';
 import type { MultiplayerSession, PeerWorldState } from '../net/MultiplayerSession';
 import { PEER_TINT } from '../net/protocol';
-import type { Dir, LevelRef, WorldFlags } from '../net/protocol';
+import type { Dir, LevelRef } from '../net/protocol';
 
 registerStructure(lakeIslandStructure);
 
@@ -86,8 +86,8 @@ export class LevelSelect {
     // Multiplayer state
     private session?: MultiplayerSession;
     private onMpLevelSelect?: (ref: LevelRef, returnPos: { x: number; y: number }) => void;
-    private mpWorldFlags: WorldFlags | null = null;
     private peerImg: HTMLImageElement;
+    private peerNameEl: HTMLDivElement;
     private currentPeerImgPath: string = '';
     private peerState: PeerWorldState | null = null;
     private peerAnim: { fromX: number; fromY: number; toX: number; toY: number; start: number } | null = null;
@@ -128,6 +128,19 @@ export class LevelSelect {
         this.peerImg.style.display = 'none';
         container.appendChild(this.peerImg);
 
+        this.peerNameEl = document.createElement('div');
+        this.peerNameEl.style.position = 'absolute';
+        this.peerNameEl.style.fontFamily = 'Pixel';
+        this.peerNameEl.style.fontSize = '12px';
+        this.peerNameEl.style.color = '#fff';
+        this.peerNameEl.style.textShadow = '1px 1px 2px rgba(0,0,0,0.8)';
+        this.peerNameEl.style.transform = 'translateX(-50%)';
+        this.peerNameEl.style.pointerEvents = 'none';
+        this.peerNameEl.style.whiteSpace = 'nowrap';
+        this.peerNameEl.style.zIndex = '11';
+        this.peerNameEl.style.display = 'none';
+        container.appendChild(this.peerNameEl);
+
         this.chestImg = document.createElement('img');
         this.chestImg.style.position = 'absolute';
         this.chestImg.style.pointerEvents = 'none';
@@ -150,9 +163,9 @@ export class LevelSelect {
         this.equipmentImg.style.backgroundColor = 'rgba(0, 0, 0, 0.1)';
         this.equipmentImg.style.borderRadius = '8px';
         this.equipmentImg.onclick = () => {
-            const current = progressManager.getEquipment();
+            const current = characterManager.getEquipment();
             const next: Equipment = current === 'none' ? 'boat' : (current === 'boat' ? 'wing' : 'none');
-            progressManager.setEquipment(next);
+            characterManager.setEquipment(next);
             this.session?.sendEquip(next);
             this.updateEquipmentUI();
             this.draw();
@@ -190,7 +203,6 @@ export class LevelSelect {
         this.session = session;
         this.onMpLevelSelect = onMpLevelSelect;
         if (session) {
-            this.mpWorldFlags = session.worldFlags;
             if (session.isGuest) {
                 // Guest cat wears the tint; its spawn is resolved once the host's position arrives.
                 this.catImg.style.filter = PEER_TINT;
@@ -255,7 +267,7 @@ export class LevelSelect {
                 const targetY = this.catY + dy;
                 const tile = this.getTileAt(targetX, targetY);
                 
-                const equipment = progressManager.getEquipment();
+                const equipment = characterManager.getEquipment();
                 let canMove = false;
                 if (equipment === 'wing') {
                     canMove = true; // Wing can go anywhere
@@ -330,7 +342,7 @@ export class LevelSelect {
                 return;
             }
 
-            const equipment = progressManager.getEquipment();
+            const equipment = characterManager.getEquipment();
 
             if (equipment === 'wing') {
                 // Wing can move anywhere directly
@@ -384,7 +396,7 @@ export class LevelSelect {
             // Handcrafted level
             this.onLevelSelect(val - 1);
         } else if (val === this.SPECIAL_LEVEL) {
-            const mapSeed = parseInt(settingsManager.currentSettings.mapSeed, 10) || 0;
+            const mapSeed = parseInt(worldManager.getSeed(), 10) || 0;
             const specialLevelId = resolveSpecialLevelIdAt(tileX, tileY, mapSeed);
             if (specialLevelId) {
                 this.onLevelSelect(-1, undefined, undefined, specialLevelId, { x: tileX, y: tileY });
@@ -394,7 +406,7 @@ export class LevelSelect {
             const key = `${tileX},${tileY}`;
             let cached = this.generatedPuzzleCache.get(key);
             if (!cached) {
-                const seed = parseInt(settingsManager.currentSettings.mapSeed) || 0;
+                const seed = parseInt(worldManager.getSeed()) || 0;
                 const difficulty = this.getDifficultyAt(tileX, tileY);
                 const result = generatePuzzle(tileX, tileY, seed, difficulty);
                 if (result) {
@@ -420,7 +432,7 @@ export class LevelSelect {
             return { kind: 'handcrafted', index: val - 1 };
         }
         if (val === this.SPECIAL_LEVEL) {
-            const mapSeed = parseInt(settingsManager.currentSettings.mapSeed, 10) || 0;
+            const mapSeed = parseInt(worldManager.getSeed(), 10) || 0;
             const id = resolveSpecialLevelIdAt(tileX, tileY, mapSeed);
             return id ? { kind: 'special', id } : null;
         }
@@ -428,7 +440,7 @@ export class LevelSelect {
             const key = `${tileX},${tileY}`;
             let cached = this.generatedPuzzleCache.get(key);
             if (!cached) {
-                const seed = parseInt(settingsManager.currentSettings.mapSeed) || 0;
+                const seed = parseInt(worldManager.getSeed()) || 0;
                 const difficulty = this.getDifficultyAt(tileX, tileY);
                 const result = generatePuzzle(tileX, tileY, seed, difficulty);
                 if (!result) {
@@ -482,7 +494,7 @@ export class LevelSelect {
         });
         const text = document.createElement('div');
         text.className = 'mp-dialog-text';
-        text.innerText = '对方想一起进入这个关卡';
+        text.innerText = `${this.session?.peerName ?? '对方'} 想一起进入这个关卡`;
         paper.appendChild(text);
 
         const row = document.createElement('div');
@@ -517,7 +529,7 @@ export class LevelSelect {
 
     private sendPos() {
         if (!this.session) return;
-        this.session.sendPos(this.catX, this.catY, this.catDir, progressManager.getEquipment());
+        this.session.sendPos(this.catX, this.catY, this.catDir, characterManager.getEquipment());
     }
 
     private handlePeerWorldUpdate(peer: PeerWorldState) {
@@ -568,6 +580,7 @@ export class LevelSelect {
         const peer = this.peerState;
         if (!peer || !this.session) {
             this.peerImg.style.display = 'none';
+            this.peerNameEl.style.display = 'none';
             return;
         }
         let x = peer.x;
@@ -594,6 +607,16 @@ export class LevelSelect {
         this.peerImg.style.top = `${screenY}px`;
         this.peerImg.style.transform = flip ? 'scaleX(-1)' : 'none';
         this.peerImg.style.display = 'block';
+
+        const peerName = this.session?.peerName;
+        if (peerName) {
+            this.peerNameEl.textContent = peerName;
+            this.peerNameEl.style.left = `${screenX + this.nodeWidth / 2}px`;
+            this.peerNameEl.style.top = `${screenY - 16}px`;
+            this.peerNameEl.style.display = 'block';
+        } else {
+            this.peerNameEl.style.display = 'none';
+        }
     }
 
     getCatTile(): { x: number; y: number } {
@@ -653,7 +676,7 @@ export class LevelSelect {
     }
 
     private checkStructureDiscovery(tileX: number, tileY: number) {
-        const mapSeed = parseInt(settingsManager.currentSettings.mapSeed, 10) || 0;
+        const mapSeed = parseInt(worldManager.getSeed(), 10) || 0;
         const discovery = resolveStructureDiscoveryAt(tileX, tileY, mapSeed);
         const zoneId = discovery?.id ?? null;
 
@@ -668,7 +691,7 @@ export class LevelSelect {
             return;
         }
 
-        if (progressManager.discoverStructure(discovery.id)) {
+        if (characterManager.discoverStructure(discovery.id)) {
             this.showStructureDiscover(discovery.name);
         }
     }
@@ -722,7 +745,8 @@ export class LevelSelect {
                     this.currentChestImgPath = ''; 
                     this.draw(); 
                     setTimeout(() => {
-                        progressManager.openChest();
+                        worldManager.openChest();
+                        this.session?.sendWorldUpdate({ t: 'chestOpened' });
                         this.isChestOpening = false;
                         this.draw();
                     }, 500);
@@ -819,7 +843,7 @@ export class LevelSelect {
     }
 
     private init() {
-        const mapSeed = parseInt(settingsManager.currentSettings.mapSeed, 10) || 0;
+        const mapSeed = parseInt(worldManager.getSeed(), 10) || 0;
         this.currentStructureZoneId = resolveStructureDiscoveryAt(this.catX, this.catY, mapSeed)?.id ?? null;
         this.checkChestInteraction();
         this.updateEquipmentUI();
@@ -831,19 +855,19 @@ export class LevelSelect {
     }
 
     private updateEquipmentUI() {
-        const equipment = progressManager.getEquipment();
+        const equipment = characterManager.getEquipment();
         this.equipmentImg.src = `/assets/images/${equipment}.png`;
         this.equipmentImg.style.opacity = equipment === 'none' ? '0.6' : '1';
     }
 
     private updateFishCountUI() {
-        const count = progressManager.getFishCount();
+        const count = characterManager.getFishCount();
         this.fishCountEl.innerHTML = `<img src="/assets/images/fish.png" alt="小鱼干" style="width:16px;height:16px;image-rendering:pixelated;vertical-align:-3px;margin-right:2px;"> ×${count}`;
         this.fishCountEl.style.display = count > 0 ? '' : 'none';
     }
 
     private findPath(startX: number, startY: number, targetX: number, targetY: number): {x: number, y: number}[] | null {
-        const equipment = progressManager.getEquipment();
+        const equipment = characterManager.getEquipment();
         const isWaterObstacle = equipment === 'none';
         
         if (startX === targetX && startY === targetY) return null;
@@ -940,28 +964,22 @@ export class LevelSelect {
         return null;
     }
 
-    // ---- World-truth helpers: guests render the HOST's world flags ----
+    // ---- World-truth helpers (worldManager handles the guest mirror internally) ----
 
     private worldLevelCompleted(index: number): boolean {
-        if (this.mpWorldFlags) return this.mpWorldFlags.completedLevels.includes(index);
-        return progressManager.isLevelCompleted(index);
+        return worldManager.isLevelCompleted(index);
     }
 
     private worldAllLevelsCompleted(upTo: number): boolean {
-        for (let i = 0; i <= upTo; i++) {
-            if (!this.worldLevelCompleted(i)) return false;
-        }
-        return true;
+        return worldManager.allLevelsCompleted(upTo);
     }
 
     private worldChestOpened(): boolean {
-        if (this.mpWorldFlags) return this.mpWorldFlags.chestOpened;
-        return progressManager.isChestOpened();
+        return worldManager.isChestOpened();
     }
 
     private worldGeneratedCompleted(x: number, y: number): boolean {
-        if (this.mpWorldFlags) return this.mpWorldFlags.completedGeneratedLevels.includes(`${x},${y}`);
-        return progressManager.isGeneratedLevelCompleted(x, y);
+        return worldManager.isGeneratedLevelCompleted(x, y);
     }
 
     private getInitialTileState(x: number, y: number): number {
@@ -1168,7 +1186,7 @@ export class LevelSelect {
         }
 
         // 3. Apply world structures (post-CA)
-        const mapSeed = parseInt(settingsManager.currentSettings.mapSeed, 10) || 0;
+        const mapSeed = parseInt(worldManager.getSeed(), 10) || 0;
         const worldMinX = cx * this.CHUNK_WIDTH - this.HALO_SIZE;
         const worldMinY = cy * this.CHUNK_HEIGHT - this.HALO_SIZE;
 
@@ -1265,7 +1283,7 @@ export class LevelSelect {
         const itemBar = document.createElement('div');
         itemBar.className = 'ui-item-bar';
         itemBar.style.pointerEvents = 'auto';
-        const currentItems = progressManager.getItemCounts();
+        const currentItems = characterManager.getItemCounts();
         const items = [
             { id: 'hint', img: 'hint.png', count: currentItems.hint },
             { id: 'plus', img: 'plus.png', count: currentItems.plus },
@@ -1483,7 +1501,7 @@ export class LevelSelect {
         const screenY = this.anchorY + chestY * this.nodeWidth;
 
         let imgPath = '/assets/images/treasure_closed.png';
-        const chestOpened = progressManager.isChestOpened();
+        const chestOpened = this.worldChestOpened();
 
         if (chestOpened) {
             imgPath = '/assets/images/treasure_opened.png';
@@ -1512,7 +1530,7 @@ export class LevelSelect {
         const screenX = this.anchorX + currentX * this.nodeWidth;
         const screenY = this.anchorY + currentY * this.nodeWidth;
         
-        const equipment = progressManager.getEquipment();
+        const equipment = characterManager.getEquipment();
         const tileAtCurrent = this.getTileAt(Math.round(currentX), Math.round(currentY));
         const { path, flip } = this.pickCatSprite(equipment, this.catDir, this.isMoving, this.isMouseMoving, tileAtCurrent);
 
@@ -1655,6 +1673,7 @@ export class LevelSelect {
         }
         this.catImg.remove();
         this.peerImg.remove();
+        this.peerNameEl.remove();
         this.chestImg.remove();
         this.equipmentImg.remove();
         this.fishCountEl.remove();

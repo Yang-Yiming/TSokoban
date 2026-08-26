@@ -13,7 +13,7 @@ import { PEER_TINT } from '../net/protocol';
 import { showThemeDialog } from '../ui/themeDialog';
 import { showSettingsDialog } from '../ui/settingsDialog';
 import { settingsManager } from '../settings';
-import { progressManager } from '../progress';
+import { characterManager, worldManager } from '../save';
 
 export interface MpContext {
     session: MultiplayerSession;
@@ -355,7 +355,7 @@ export class GameController {
         // Bottom Left: Items (undo/hint disabled in multiplayer)
         const itemBar = document.createElement('div');
         itemBar.className = 'ui-item-bar';
-        const currentItems = progressManager.getItemCounts();
+        const currentItems = characterManager.getItemCounts();
         const items = [
             { id: 'hint', img: 'hint.png', count: currentItems.hint, action: () => this.useHint() },
             { id: 'plus', img: 'plus.png', count: currentItems.plus, action: () => this.usePlus() },
@@ -450,7 +450,7 @@ export class GameController {
         }
         this.uiElements.stepText.innerText = `移动步数: ${this.stepCount}`;
         this.uiElements.limitText.innerText = `步数限制: ${Number.isFinite(this.stepLimit) ? this.stepLimit : '∞'}`;
-        const counts = progressManager.getItemCounts();
+        const counts = characterManager.getItemCounts();
         if (this.uiElements.itemHintText) this.uiElements.itemHintText.innerText = `x${counts.hint}`;
         if (this.uiElements.itemPlusText) this.uiElements.itemPlusText.innerText = `x${counts.plus}`;
         if (this.uiElements.itemUndoText) this.uiElements.itemUndoText.innerText = `x${counts.undo}`;
@@ -459,7 +459,7 @@ export class GameController {
     private useHint() {
         if (this.mp) return;
         const now = performance.now();
-        if (progressManager.getItemCounts().hint <= 0 || !this.currentMap || this.isGameOver || (now - this.lastMoveTime < this.moveAnimDuration) || this.moveQueue.length > 0) return;
+        if (characterManager.getItemCounts().hint <= 0 || !this.currentMap || this.isGameOver || (now - this.lastMoveTime < this.moveAnimDuration) || this.moveQueue.length > 0) return;
         
         const solver = new AStarSolver(this.currentMap);
         const result = solver.solve(5000);
@@ -477,7 +477,7 @@ export class GameController {
                 }
                 this.moveQueue.push({ dx, dy, orientation });
             }
-            progressManager.useItem('hint');
+            characterManager.useItem('hint');
             this.updateUI();
         } else {
             alert('此局无解，建议重置或撤销！');
@@ -485,9 +485,9 @@ export class GameController {
     }
 
     private usePlus() {
-        if (progressManager.getItemCounts().plus <= 0 || !this.currentMap) return;
+        if (characterManager.getItemCounts().plus <= 0 || !this.currentMap) return;
         this.stepLimit += 5;
-        progressManager.useItem('plus');
+        characterManager.useItem('plus');
         
         if (this.isGameOver && this.stepCount < this.stepLimit && !this.currentMap.isDeadlock()) {
             this.isGameOver = false;
@@ -502,7 +502,7 @@ export class GameController {
 
     private useUndo() {
         if (this.mp) return;
-        if (progressManager.getItemCounts().undo <= 0 || !this.currentMap) return;
+        if (characterManager.getItemCounts().undo <= 0 || !this.currentMap) return;
         if (this.currentMap.undo()) {
             this.isGameOver = false;
             if (this.currentOverlay) {
@@ -510,7 +510,7 @@ export class GameController {
                 this.currentOverlay = null;
             }
             this.stepCount--;
-            progressManager.useItem('undo');
+            characterManager.useItem('undo');
             this.lastMoveTime = 0; // Reset animation to snap to previous position
             this.updateUI();
         }
@@ -708,10 +708,12 @@ export class GameController {
             this.currentMap.setTile(mySpawn.x, mySpawn.y, this.currentMap.getTile(mySpawn.x, mySpawn.y) | TILE_MASK.PLAYER);
             this.peerPos = { x: peerSpawn.x, y: peerSpawn.y };
             this.scene.setPeerVisible(true);
+            this.scene.setPeerName(mp.session.peerName);
         } else {
             // Solo entry in a multiplayer session: no peer cat in this level.
             this.peerPos = null;
             this.scene.setPeerVisible(false);
+            this.scene.setPeerName(null);
         }
 
         // Step limit: A* for static levels, generator meta for generated ones. +25 in MP.
@@ -893,13 +895,20 @@ export class GameController {
                 }
                 if (!this.isDestroyed) {
                     if (!this.isGeneratedLevel && !this.isSpecialLevel) {
-                        progressManager.completeLevel(this.currentLevelIndex);
+                        // World save: host (or solo) persists; guests get the delta from the host.
+                        worldManager.completeLevel(this.currentLevelIndex);
+                        this.mp?.session.sendWorldUpdate({ t: 'levelCompleted', index: this.currentLevelIndex });
                     } else if (this.isGeneratedLevel && this.generatedLevelMeta) {
-                        progressManager.addFish(fishReward);
-                        progressManager.completeGeneratedLevel(
+                        characterManager.addFish(fishReward);
+                        worldManager.completeGeneratedLevel(
                             this.generatedLevelMeta.worldX,
                             this.generatedLevelMeta.worldY
                         );
+                        this.mp?.session.sendWorldUpdate({
+                            t: 'generatedCompleted',
+                            x: this.generatedLevelMeta.worldX,
+                            y: this.generatedLevelMeta.worldY
+                        });
                     }
                     callback();
                 }

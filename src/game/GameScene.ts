@@ -21,6 +21,7 @@ export class GameScene {
     private topCtx: CanvasRenderingContext2D;
     private playerImg: HTMLImageElement;
     private peerImg: HTMLImageElement;
+    private peerNameEl: HTMLDivElement;
     private tileSize: number = 55;
     private anchorX: number = 0;
     private anchorY: number = 0;
@@ -60,6 +61,18 @@ export class GameScene {
         this.peerImg.style.display = 'none';
         this.peerImg.style.zIndex = '1';
 
+        this.peerNameEl = document.createElement('div');
+        this.peerNameEl.style.position = 'absolute';
+        this.peerNameEl.style.fontFamily = 'Pixel';
+        this.peerNameEl.style.fontSize = '12px';
+        this.peerNameEl.style.color = '#fff';
+        this.peerNameEl.style.textShadow = '1px 1px 2px rgba(0,0,0,0.8)';
+        this.peerNameEl.style.transform = 'translateX(-50%)';
+        this.peerNameEl.style.pointerEvents = 'none';
+        this.peerNameEl.style.whiteSpace = 'nowrap';
+        this.peerNameEl.style.zIndex = '3';
+        this.peerNameEl.style.display = 'none';
+
         this.canvas.style.position = 'absolute';
         this.canvas.style.zIndex = '0';
         
@@ -71,6 +84,7 @@ export class GameScene {
         container.appendChild(this.playerImg);
         container.appendChild(this.peerImg);
         container.appendChild(this.topCanvas);
+        container.appendChild(this.peerNameEl);
 
         this.resize(container);
         this.boundResize = () => this.resize(container);
@@ -284,8 +298,14 @@ export class GameScene {
                 qy -= Math.floor(peerState.moveDir.y * offset);
             }
             this.drawCatOnImg(this.peerImg, qx, qy, peerState);
+            if (this.peerNameEl.textContent) {
+                this.peerNameEl.style.left = `${qx + this.tileSize / 2}px`;
+                this.peerNameEl.style.top = `${qy - 18}px`;
+                this.peerNameEl.style.display = 'block';
+            }
         } else {
             this.peerImg.style.display = 'none';
+            this.peerNameEl.style.display = 'none';
         }
 
         // Layer 4: Objects (Walls, Boxes) (Top Canvas)
@@ -525,6 +545,11 @@ export class GameScene {
         this.peerImg.style.display = visible ? 'block' : 'none';
     }
 
+    setPeerName(name: string | null) {
+        this.peerNameEl.textContent = name;
+        if (!name) this.peerNameEl.style.display = 'none';
+    }
+
     setPlayerTint(filter: string | null) {
         this.playerImg.style.filter = filter ?? '';
     }
@@ -566,6 +591,7 @@ export class GameScene {
         themeManager.removeListener(this.themeListener);
         this.playerImg.remove();
         this.peerImg.remove();
+        this.peerNameEl.remove();
         this.canvas.remove();
         this.topCanvas.remove();
     }

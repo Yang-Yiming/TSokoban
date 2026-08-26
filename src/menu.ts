@@ -6,7 +6,8 @@ import { showThemeDialog } from './ui/themeDialog';
 import { createDialog } from './ui/dialog';
 import { showSettingsDialog } from './ui/settingsDialog';
 import { settingsManager } from './settings';
-import { progressManager } from './progress';
+import { characterManager, worldManager, exportAllSaves, importAllSaves, clearAllSaves } from './save';
+import type { CharacterSave } from './save';
 import { checkSpecialDay } from './specialDays';
 import type { SpecialDayEffect } from './specialDays';
 import { MultiplayerSession } from './net/MultiplayerSession';
@@ -253,6 +254,12 @@ export class Menu {
     
     const vbox = document.createElement('div');
     vbox.className = 'settings-vbox';
+
+    const hint = document.createElement('div');
+    hint.className = 'mp-dialog-text';
+    hint.style.textAlign = 'left';
+    hint.innerText = '角色档（名字/鱼干/道具/装备）跟人走；世界档（种子+通关记录）跟世界走。换房主联机时，用角色码带走你的角色。';
+    vbox.appendChild(hint);
     
     const saveButtonsRow = document.createElement('div');
     saveButtonsRow.className = 'settings-row';
@@ -260,9 +267,9 @@ export class Menu {
     saveButtonsRow.style.marginTop = '20px';
 
     const exportBtn = document.createElement('button');
-    exportBtn.innerText = '导出存档';
+    exportBtn.innerText = '导出全部存档';
     exportBtn.onclick = () => {
-      const data = progressManager.exportSave();
+      const data = exportAllSaves();
       navigator.clipboard.writeText(data).then(() => {
         alert('存档已复制到剪贴板');
       });
@@ -272,7 +279,7 @@ export class Menu {
     importBtn.innerText = '导入存档';
     importBtn.onclick = () => {
       const data = prompt('请粘贴存档代码:');
-      if (data && progressManager.importSave(data)) {
+      if (data && importAllSaves(data)) {
         alert('存档导入成功，请刷新页面');
         window.location.reload();
       } else if (data) {
@@ -284,8 +291,8 @@ export class Menu {
     clearBtn.innerText = '清空存档';
     clearBtn.style.color = 'red';
     clearBtn.onclick = () => {
-      if (confirm('确定要清空所有存档吗？此操作不可撤销！')) {
-        progressManager.clearSave();
+      if (confirm('确定要清空所有存档（角色+世界）吗？此操作不可撤销！')) {
+        clearAllSaves();
         alert('存档已清空，请刷新页面');
         window.location.reload();
       }
@@ -340,8 +347,8 @@ export class Menu {
 
   private showModeButtons() {
     const modes = [
-      { text: '经典模式', sub: '单人游玩', img: '/assets/images/choice2.png', left: '25%', action: () => this.showLevelSelect() },
-      { text: '创建房间', sub: '和朋友联机（房主）', img: '/assets/images/choice1.png', left: '50%', action: () => { if (__MULTIPLAYER__) this.startCreateRoom(); else this.showMpUnavailable(); } },
+      { text: '经典模式', sub: '单人游玩', img: '/assets/images/choice2.png', left: '25%', action: () => this.startClassicFlow() },
+      { text: '创建房间', sub: '和朋友联机（房主）', img: '/assets/images/choice1.png', left: '50%', action: () => { if (__MULTIPLAYER__) this.startCreateRoomFlow(); else this.showMpUnavailable(); } },
       { text: '加入房间', sub: '没有链接？输入房号', img: '/assets/images/choice3.png', left: '75%', action: () => { if (__MULTIPLAYER__) this.startJoinRoom(); else this.showMpUnavailable(); } }
     ];
 
@@ -374,46 +381,232 @@ export class Menu {
     });
   }
 
-  // ---- Multiplayer ----
+  // ---- Character / World selection (Terraria-style save split) ----
 
-  /** Opening a shared link (…/?room=1234) joins the room directly, no dialogs. */
+  private showCharacterSelect(onPicked: (c: CharacterSave) => void) {
+    const { shade, paper } = createDialog(this.app, '选择角色');
+    const last = characterManager.getLastUsed();
+    let selectedId = characterManager.list().some((c) => c.id === last.characterId)
+      ? last.characterId
+      : (characterManager.list()[0]?.id ?? null);
+
+    const listBox = document.createElement('div');
+    listBox.className = 'save-list';
+    paper.appendChild(listBox);
+
+    const refresh = () => {
+      listBox.innerHTML = '';
+      const chars = characterManager.list();
+      if (chars.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'mp-dialog-text';
+        empty.innerText = '还没有角色，创建一个吧';
+        listBox.appendChild(empty);
+      }
+      chars.forEach((c) => {
+        const row = document.createElement('div');
+        row.className = 'save-row' + (c.id === selectedId ? ' selected' : '');
+        const label = document.createElement('span');
+        label.innerText = `${c.id === last.characterId ? '▶ ' : ''}${c.name}　🐟×${c.fishCount}`;
+        label.onclick = () => {
+          selectedId = c.id;
+          refresh();
+        };
+        row.appendChild(label);
+        listBox.appendChild(row);
+      });
+    };
+    refresh();
+
+    const btnRow = document.createElement('div');
+    btnRow.className = 'settings-row';
+    const mkBtn = (text: string, color?: string) => {
+      const b = document.createElement('button');
+      b.innerText = text;
+      if (color) b.style.color = color;
+      return b;
+    };
+
+    const newBtn = mkBtn('新角色');
+    newBtn.onclick = () => {
+      const name = prompt('给角色起个名字：');
+      if (name === null) return;
+      const c = characterManager.create(name);
+      selectedId = c.id;
+      refresh();
+    };
+
+    const importBtn = mkBtn('导入');
+    importBtn.onclick = () => {
+      const code = prompt('粘贴角色码：');
+      if (!code) return;
+      if (characterManager.importCharacter(code)) refresh();
+      else alert('导入失败，请检查角色码');
+    };
+
+    const exportBtn = mkBtn('导出');
+    exportBtn.onclick = () => {
+      if (!selectedId) { alert('请先选择一个角色'); return; }
+      const code = characterManager.exportCharacter(selectedId);
+      if (code) navigator.clipboard.writeText(code).then(() => alert('角色码已复制到剪贴板')).catch(() => {});
+    };
+
+    const delBtn = mkBtn('删除', 'red');
+    delBtn.onclick = () => {
+      if (!selectedId) { alert('请先选择一个角色'); return; }
+      const c = characterManager.get(selectedId);
+      if (c && confirm(`确定删除角色「${c.name}」吗？此操作不可撤销！`)) {
+        characterManager.remove(selectedId);
+        selectedId = characterManager.list()[0]?.id ?? null;
+        refresh();
+      }
+    };
+
+    const okBtn = mkBtn('确定');
+    okBtn.onclick = () => {
+      const c = selectedId ? characterManager.get(selectedId) : null;
+      if (!c) { alert('请先选择或创建角色'); return; }
+      shade.remove();
+      onPicked(c);
+    };
+
+    btnRow.appendChild(newBtn);
+    btnRow.appendChild(importBtn);
+    btnRow.appendChild(exportBtn);
+    btnRow.appendChild(delBtn);
+    btnRow.appendChild(okBtn);
+    paper.appendChild(btnRow);
+  }
+
+  private showWorldSelect(onPicked: (seed: string) => void) {
+    const { shade, paper } = createDialog(this.app, '选择世界');
+    const last = characterManager.getLastUsed();
+    const worlds = worldManager.listWorlds();
+    let selectedSeed = worlds.some((w) => w.seed === last.seed) ? last.seed : (worlds[0]?.seed ?? null);
+
+    const listBox = document.createElement('div');
+    listBox.className = 'save-list';
+    paper.appendChild(listBox);
+
+    const refresh = () => {
+      listBox.innerHTML = '';
+      const list = worldManager.listWorlds();
+      if (list.length === 0) {
+        const empty = document.createElement('div');
+        empty.className = 'mp-dialog-text';
+        empty.innerText = '还没有世界，创建一个吧';
+        listBox.appendChild(empty);
+      }
+      list.forEach(({ seed, save }) => {
+        const row = document.createElement('div');
+        row.className = 'save-row' + (seed === selectedSeed ? ' selected' : '');
+        const label = document.createElement('span');
+        const progress = `${Math.min(save.completedLevels.length, 16)}/16`;
+        const date = save.lastPlayedAt ? new Date(save.lastPlayedAt).toLocaleDateString() : '新';
+        label.innerText = `${seed === last.seed ? '▶ ' : ''}世界 ${seed}　${progress}　${date}`;
+        label.onclick = () => {
+          selectedSeed = seed;
+          refresh();
+        };
+        row.appendChild(label);
+        listBox.appendChild(row);
+      });
+    };
+    refresh();
+
+    const btnRow = document.createElement('div');
+    btnRow.className = 'settings-row';
+    const mkBtn = (text: string) => {
+      const b = document.createElement('button');
+      b.innerText = text;
+      return b;
+    };
+
+    const randomBtn = mkBtn('随机新世界');
+    randomBtn.onclick = () => {
+      selectedSeed = String(Math.floor(1000 + Math.random() * 9000));
+      refresh();
+    };
+
+    const seedBtn = mkBtn('输入种子');
+    seedBtn.onclick = () => {
+      const seed = prompt('输入世界种子：');
+      if (!seed) return;
+      selectedSeed = seed;
+      refresh();
+    };
+
+    const okBtn = mkBtn('确定');
+    okBtn.onclick = () => {
+      if (!selectedSeed) { alert('请先选择或创建世界'); return; }
+      shade.remove();
+      onPicked(selectedSeed);
+    };
+
+    btnRow.appendChild(randomBtn);
+    btnRow.appendChild(seedBtn);
+    btnRow.appendChild(okBtn);
+    paper.appendChild(btnRow);
+  }
+
+  // ---- Game flows ----
+
+  private startClassicFlow() {
+    this.showCharacterSelect((c) => {
+      this.showWorldSelect((seed) => this.startSoloWorld(c, seed));
+    });
+  }
+
+  private startSoloWorld(c: CharacterSave, seed: string) {
+    characterManager.setActive(c.id);
+    settingsManager.updateSettings({ mapSeed: seed });
+    worldManager.setMirror(null);
+    worldManager.setActiveSeed(seed);
+    this.showLevelSelect();
+  }
+
+  /** Guest: adopt the host's world (seed + mirror) before entering the map. */
+  private enterHostWorld(session: MultiplayerSession, seed: string, world: WorldFlags | null, c: CharacterSave) {
+    characterManager.setActive(c.id);
+    settingsManager.updateSettings({ mapSeed: seed });
+    worldManager.setActiveSeed(seed);
+    worldManager.setMirror(world ?? { completedLevels: [], chestOpened: false, completedGeneratedLevels: [] });
+    this.showLevelSelect(0, undefined, session);
+  }
+
+  /** Opening a shared link (…/?room=1234): pick a character, then join directly. */
   private autoJoinFromUrl() {
     if (!__MULTIPLAYER__) return;
     const room = new URLSearchParams(window.location.search).get('room');
     if (!room) return;
 
-    const session = new MultiplayerSession();
-    this.session = session;
-    session.onDisconnected = (reason) => this.handleMpDisconnect(reason);
+    this.showCharacterSelect((c) => {
+      characterManager.setActive(c.id);
+      const session = new MultiplayerSession();
+      this.session = session;
+      session.onDisconnected = (reason) => this.handleMpDisconnect(reason);
 
-    const status = document.createElement('div');
-    status.id = 'mp-autojoin-status';
-    status.style.cssText = 'position:absolute;top:280px;left:50%;transform:translateX(-50%);font-family:Pixel;font-size:20px;color:#55371d;z-index:50;';
-    status.innerText = `正在加入房间 ${room}…`;
-    this.app.appendChild(status);
+      const status = document.createElement('div');
+      status.id = 'mp-autojoin-status';
+      status.style.cssText = 'position:absolute;top:280px;left:50%;transform:translateX(-50%);font-family:Pixel;font-size:20px;color:#55371d;z-index:50;';
+      status.innerText = `正在加入房间 ${room}…`;
+      this.app.appendChild(status);
 
-    session.onJoined = (info) => {
-      if (!info.isHost) {
+      session.onJoined = (info) => {
+        if (!info.isHost) {
+          status.remove();
+          this.enterHostWorld(session, info.seed, info.world, c);
+        }
+      };
+      session.onError = (msg) => {
         status.remove();
-        this.showLevelSelect(0, undefined, session);
-      }
-    };
-    session.onError = (msg) => {
-      status.remove();
-      session.leave();
-      if (this.session === session) this.session = null;
-      alert(`加入房间失败：${msg}`);
-    };
+        session.leave();
+        if (this.session === session) this.session = null;
+        alert(`加入房间失败：${msg}`);
+      };
 
-    session.joinRoom(room);
-  }
-
-  private getMpWorldFlags(): WorldFlags {
-    return {
-      completedLevels: progressManager.getCompletedLevels(),
-      chestOpened: progressManager.isChestOpened(),
-      completedGeneratedLevels: progressManager.getCompletedGeneratedLevels(),
-    };
+      session.joinRoom(room, c.name);
+    });
   }
 
   private showMpUnavailable() {
@@ -425,7 +618,18 @@ export class Menu {
     paper.appendChild(tip);
   }
 
-  private startCreateRoom() {
+  private startCreateRoomFlow() {
+    this.showCharacterSelect((c) => {
+      this.showWorldSelect((seed) => this.startCreateRoom(c, seed));
+    });
+  }
+
+  private startCreateRoom(c: CharacterSave, seed: string) {
+    characterManager.setActive(c.id);
+    settingsManager.updateSettings({ mapSeed: seed });
+    worldManager.setMirror(null);
+    worldManager.setActiveSeed(seed);
+
     const session = new MultiplayerSession();
     this.session = session;
     session.onDisconnected = (reason) => this.handleMpDisconnect(reason);
@@ -441,6 +645,15 @@ export class Menu {
     status.className = 'mp-dialog-text';
     status.innerText = '正在连接服务器…';
     paper.appendChild(status);
+
+    if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+      const warn = document.createElement('div');
+      warn.className = 'mp-dialog-text';
+      warn.style.color = 'red';
+      warn.style.whiteSpace = 'pre-line';
+      warn.innerText = '⚠ 当前通过 localhost 打开，分享链接别人打不开。\n请改用局域网 IP 或 .local 地址打开本页后再建房';
+      paper.appendChild(warn);
+    }
 
     session.onJoined = (info) => {
       status.innerText = '等待玩家加入…';
@@ -472,10 +685,17 @@ export class Menu {
       status.innerText = msg;
     };
 
-    session.createRoom(settingsManager.currentSettings.mapSeed, this.getMpWorldFlags());
+    session.createRoom(worldManager.getSeed(), worldManager.exportFlags(), c.name);
   }
 
   private startJoinRoom() {
+    this.showCharacterSelect((c) => {
+      characterManager.setActive(c.id);
+      this.showJoinRoomDialog(c);
+    });
+  }
+
+  private showJoinRoomDialog(c: CharacterSave) {
     const session = new MultiplayerSession();
     this.session = session;
     session.onDisconnected = (reason) => this.handleMpDisconnect(reason);
@@ -511,7 +731,7 @@ export class Menu {
     session.onJoined = (info) => {
       if (!info.isHost) {
         shade.remove();
-        this.showLevelSelect(0, undefined, session);
+        this.enterHostWorld(session, info.seed, info.world, c);
       }
     };
     session.onError = (msg) => {
@@ -524,7 +744,7 @@ export class Menu {
       const match = raw.match(/room=([0-9]+)/);
       const code = match ? match[1] : raw;
       status.innerText = '加入中…';
-      session.joinRoom(code);
+      session.joinRoom(code, c.name);
     };
     joinBtn.onclick = doJoin;
     input.onkeydown = (e) => {
@@ -536,6 +756,7 @@ export class Menu {
     const why = reason === 'hostLeft' ? '房主已离开，房间解散'
       : reason === 'peerLeft' ? '对方已离开' : '连接已断开';
     document.getElementById('mp-autojoin-status')?.remove();
+    worldManager.setMirror(null);
     if (this.mpCleanup) {
       this.mpCleanup();
       this.mpCleanup = null;
@@ -573,6 +794,7 @@ export class Menu {
       levelSelect.destroy();
       if (session) {
         session.leave();
+        worldManager.setMirror(null);
         if (this.session === session) this.session = null;
         this.mpCleanup = null;
       }
@@ -589,6 +811,7 @@ export class Menu {
 
     if (session) {
       this.mpCleanup = () => levelSelect.destroy();
+      session.onWorldUpdate = (delta) => worldManager.applyDelta(delta);
       session.onLevelStart = (ref, spawns) => {
         const returnPos = levelSelect.getCatTile();
         levelSelect.destroy();

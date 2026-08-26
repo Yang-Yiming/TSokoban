@@ -1,5 +1,6 @@
 import { createDialog } from './dialog';
 import { settingsManager } from '../settings';
+import { worldManager } from '../save';
 
 export function showSettingsDialog(container: HTMLElement) {
   const { paper } = createDialog(container, '设置');
@@ -39,16 +40,17 @@ export function showSettingsDialog(container: HTMLElement) {
   aStarRow.appendChild(checkContainer);
   vbox.appendChild(aStarRow);
 
-  // Map Seed
+  // Map Seed (= which world save is active)
   const seedRow = document.createElement('div');
   seedRow.className = 'settings-row';
   const seedLabel = document.createElement('label');
-  seedLabel.innerText = '设定地图生成种子';
+  seedLabel.innerText = '世界种子（每个种子是独立世界）';
   const seedInput = document.createElement('input');
   seedInput.type = 'text';
   seedInput.value = settings.mapSeed;
-  seedInput.oninput = () => {
+  seedInput.onchange = () => {
     settingsManager.updateSettings({ mapSeed: seedInput.value });
+    worldManager.setActiveSeed(seedInput.value);
   };
   seedRow.appendChild(seedLabel);
   seedRow.appendChild(seedInput);

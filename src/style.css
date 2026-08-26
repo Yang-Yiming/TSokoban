@@ -129,6 +129,34 @@ img {
   line-height: 1.8;
 }
 
+.save-list {
+  max-height: 260px;
+  overflow-y: auto;
+  min-width: 320px;
+  padding: 6px 14px;
+}
+
+.save-row {
+  font-family: 'Pixel';
+  color: #55371d;
+  font-size: 18px;
+  padding: 8px 10px;
+  cursor: pointer;
+  border-bottom: 1px dashed rgba(85, 55, 29, 0.25);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.save-row:hover {
+  background: rgba(85, 55, 29, 0.08);
+}
+
+.save-row.selected {
+  background: rgba(85, 55, 29, 0.15);
+  font-weight: bold;
+}
+
 .icon-btn {
   position: absolute;
   top: 35px;

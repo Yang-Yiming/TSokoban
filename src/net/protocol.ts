@@ -18,6 +18,12 @@ export type LevelRef =
   | { kind: 'special'; id: string }
   | { kind: 'generated'; x: number; y: number; data: number[][]; meta: GeneratedLevelMeta };
 
+/** Host → guest: one change to the world save (guests apply it to their mirror). */
+export type WorldDelta =
+  | { t: 'levelCompleted'; index: number }
+  | { t: 'chestOpened' }
+  | { t: 'generatedCompleted'; x: number; y: number };
+
 /** Game-level messages relayed through the server (server treats them as opaque). */
 export type GamePayload =
   // ---- overworld ----
@@ -33,7 +39,9 @@ export type GamePayload =
   // ---- in-level ----
   | { t: 'move'; dx: number; dy: number }
   | { t: 'win' }
-  | { t: 'restart' };
+  | { t: 'restart' }
+  // ---- world save deltas (host only) ----
+  | { t: 'worldUpdate'; delta: WorldDelta };
 
 // ---- transport (client <-> server) ----
 

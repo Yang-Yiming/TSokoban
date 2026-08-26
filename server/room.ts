@@ -12,7 +12,7 @@
  *   bun run build     # once, to produce dist/
  *   bun run server    # starts on :8787, prints join URLs
  */
-import { networkInterfaces } from 'node:os';
+import { hostname, networkInterfaces } from 'node:os';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 
@@ -202,17 +202,12 @@ if (!existsSync(path.join(DIST_DIR, 'index.html'))) {
   console.log('⚠️  未找到 dist/index.html —— 请先运行 `bun run build`，否则网页无法打开（联机服务器仍可用）');
 }
 
-console.log(`🐱 TSokoban 联机服务器已启动 (端口 ${server.port})`);
-console.log('\n本机局域网地址（把下面的链接发给同一 WiFi 下的朋友）:');
-const nets = networkInterfaces();
-let found = false;
-for (const addrs of Object.values(nets)) {
+const host = hostname().replace(/\.local$/, '');
+console.log(`http://${host}.local:${server.port}`);
+for (const addrs of Object.values(networkInterfaces())) {
   for (const net of addrs ?? []) {
     if (net.family === 'IPv4' && !net.internal) {
-      console.log(`  http://${net.address}:${server.port}`);
-      found = true;
+      console.log(`http://${net.address}:${server.port}`);
     }
   }
 }
-if (!found) console.log('  (未检测到局域网网卡，试试 http://localhost:' + server.port + ')');
-console.log('\n按 Ctrl+C 停止');

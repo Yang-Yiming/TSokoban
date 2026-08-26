@@ -8,6 +8,7 @@ import type {
   GamePayload,
   LevelRef,
   Spawn,
+  WorldDelta,
   WorldFlags,
 } from './protocol';
 import { MAP_DATA, SPECIAL_LEVEL_LIBRARY } from '../game/mapData';
@@ -101,6 +102,8 @@ export class MultiplayerSession {
   isHost = false;
   roomCode = '';
   seed = '0';
+  /** Peer's character name (name tags, ready-check prompt). */
+  peerName = '对方';
   /** Guest only: world truth snapshot from the host. */
   worldFlags: WorldFlags | null = null;
   /** True once joined (both lobby & in-game). */
@@ -118,6 +121,8 @@ export class MultiplayerSession {
   onPeerMove: (dx: number, dy: number) => void = () => {};
   onPeerWin: () => void = () => {};
   onPeerRestart: () => void = () => {};
+  /** Host → guest: a change to the world save. */
+  onWorldUpdate: (delta: WorldDelta) => void = () => {};
   /** Peer left the level I'm still in — hide their cat. */
   onPeerExitLevel: (x: number, y: number) => void = () => {};
   onDisconnected: (reason: DisconnectReason) => void = () => {};
@@ -132,12 +137,13 @@ export class MultiplayerSession {
 
   // ---- lifecycle ----
 
-  createRoom(seed: string, world: WorldFlags): void {
+  createRoom(seed: string, world: WorldFlags, name: string): void {
     this.seed = seed;
     this.net.connect({
       onJoined: (info) => this.handleJoined(info),
       onPeerJoined: (peer) => {
         this.peerId = peer.id;
+        this.peerName = peer.name;
         this.peer = null;
         this.onPeerJoined(peer);
       },
@@ -147,14 +153,15 @@ export class MultiplayerSession {
       onClose: () => this.handleDisconnect('connectionLost'),
       onError: (msg) => this.onError(msg),
     });
-    this.net.send({ t: 'create', seed, world, name: 'P1' });
+    this.net.send({ t: 'create', seed, world, name });
   }
 
-  joinRoom(room: string): void {
+  joinRoom(room: string, name: string): void {
     this.net.connect({
       onJoined: (info) => this.handleJoined(info),
       onPeerJoined: (peer) => {
         this.peerId = peer.id;
+        this.peerName = peer.name;
         this.peer = null;
         this.onPeerJoined(peer);
       },
@@ -164,7 +171,7 @@ export class MultiplayerSession {
       onClose: () => this.handleDisconnect('connectionLost'),
       onError: (msg) => this.onError(msg),
     });
-    this.net.send({ t: 'join', room, name: 'P2' });
+    this.net.send({ t: 'join', room, name });
   }
 
   /** Graceful leave (user backed out to the main menu). */
@@ -183,6 +190,7 @@ export class MultiplayerSession {
     this.seed = info.seed;
     this.worldFlags = info.world;
     this.peerId = info.players.map((p) => p.id).find((id) => id !== info.id) ?? -1;
+    this.peerName = info.players.find((p) => p.id !== info.id)?.name ?? '对方';
     this.active = true;
     this.onJoined(info);
   }
@@ -275,6 +283,12 @@ export class MultiplayerSession {
 
   sendRestart(): void {
     this.net.relay({ t: 'restart' });
+  }
+
+  /** Host only: broadcast a world-save change so the guest's mirror stays current. */
+  sendWorldUpdate(delta: WorldDelta): void {
+    if (!this.isHost) return;
+    this.net.relay({ t: 'worldUpdate', delta });
   }
 
   // ---- routing ----
@@ -377,6 +391,7 @@ export class MultiplayerSession {
       case 'move': this.onPeerMove(p.dx, p.dy); break;
       case 'win': this.onPeerWin(); break;
       case 'restart': this.onPeerRestart(); break;
+      case 'worldUpdate': this.onWorldUpdate(p.delta); break;
     }
   }
 }
