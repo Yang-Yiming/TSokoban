@@ -8,12 +8,15 @@ import type { WorldDelta } from './net/protocol';
  *  - Last selections (menu preselect):        tsokoban_last
  */
 
+type OwnableEquipment = Exclude<Equipment, 'none'>;
+
 export interface CharacterSave {
   id: string;
   name: string;
   fishCount: number;
   itemCounts: { hint: number; plus: number; undo: number };
   equipment: Equipment;
+  equipmentOwned: OwnableEquipment[];
   discoveredStructures: string[];
   createdAt: number;
 }
@@ -73,6 +76,11 @@ function emptyWorld(): WorldSave {
 }
 
 function sanitizeCharacter(raw: Partial<CharacterSave>): CharacterSave {
+  const equipment: Equipment = raw.equipment ?? 'none';
+  // Equipment used to be free to toggle; anything an old save has equipped is
+  // treated as owned so the ownership split doesn't take items away.
+  const legacyOwned: OwnableEquipment[] =
+    !Array.isArray(raw.equipmentOwned) && equipment !== 'none' ? [equipment] : [];
   return {
     // Keep the original id when present so full-backup imports can dedupe.
     id: typeof raw.id === 'string' && raw.id ? raw.id : newId(),
@@ -83,7 +91,10 @@ function sanitizeCharacter(raw: Partial<CharacterSave>): CharacterSave {
       plus: raw.itemCounts?.plus ?? 3,
       undo: raw.itemCounts?.undo ?? 3,
     },
-    equipment: raw.equipment ?? 'none',
+    equipment,
+    equipmentOwned: Array.isArray(raw.equipmentOwned)
+      ? [...new Set(raw.equipmentOwned.filter((e) => e === 'boat' || e === 'wing'))]
+      : legacyOwned,
     discoveredStructures: Array.isArray(raw.discoveredStructures) ? raw.discoveredStructures : [],
     createdAt: Date.now(),
   };
@@ -169,11 +180,39 @@ class CharacterManager {
   }
 
   getEquipment(): Equipment {
-    return this.active?.equipment ?? 'none';
+    const c = this.active;
+    if (!c) return 'none';
+    // Equipped gear must be owned; anything else reads as barefoot.
+    return c.equipment !== 'none' && !c.equipmentOwned.includes(c.equipment)
+      ? 'none'
+      : c.equipment;
   }
 
   setEquipment(e: Equipment): void {
-    this.mutate((c) => { c.equipment = e; });
+    this.mutate((c) => {
+      if (e !== 'none' && !c.equipmentOwned.includes(e)) return;
+      c.equipment = e;
+    });
+  }
+
+  getOwnedEquipment(): OwnableEquipment[] {
+    return this.active ? [...this.active.equipmentOwned] : [];
+  }
+
+  ownsEquipment(e: Equipment): boolean {
+    return e !== 'none' && (this.active?.equipmentOwned.includes(e) ?? false);
+  }
+
+  /** Grants an equipment once per character; returns true only on first grant. */
+  grantEquipment(e: OwnableEquipment): boolean {
+    let granted = false;
+    this.mutate((c) => {
+      if (!c.equipmentOwned.includes(e)) {
+        c.equipmentOwned.push(e);
+        granted = true;
+      }
+    });
+    return granted;
   }
 
   hasDiscoveredStructure(id: string): boolean {

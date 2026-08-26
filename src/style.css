@@ -547,6 +547,20 @@ canvas {
   vertical-align: -5px;
 }
 
+.win-equip {
+  font-size: 22px;
+  color: #f0c864;
+  margin: 4px 0;
+  text-shadow: 1px 1px 3px rgba(0,0,0,0.3);
+}
+
+.win-equip img {
+  width: 22px;
+  height: 22px;
+  image-rendering: pixelated;
+  vertical-align: -5px;
+}
+
 .lose-overlay {
   position: absolute;
   top: 0;

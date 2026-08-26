@@ -811,7 +811,13 @@ export class Menu {
 
     if (session) {
       this.mpCleanup = () => levelSelect.destroy();
-      session.onWorldUpdate = (delta) => worldManager.applyDelta(delta);
+      session.onWorldUpdate = (delta) => {
+        worldManager.applyDelta(delta);
+        // Chest loot settles locally on every client (same as fish rewards).
+        if (delta.t === 'chestOpened') {
+          characterManager.grantEquipment('boat');
+        }
+      };
       session.onLevelStart = (ref, spawns) => {
         const returnPos = levelSelect.getCatTile();
         levelSelect.destroy();

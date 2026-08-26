@@ -163,8 +163,18 @@ export class LevelSelect {
         this.equipmentImg.style.backgroundColor = 'rgba(0, 0, 0, 0.1)';
         this.equipmentImg.style.borderRadius = '8px';
         this.equipmentImg.onclick = () => {
+            const owned = characterManager.getOwnedEquipment();
+            if (owned.length === 0) {
+                this.showMessage(
+                    '还没有获得装备',
+                    this.anchorX + this.catX * this.nodeWidth + this.nodeWidth / 2,
+                    this.anchorY + this.catY * this.nodeWidth - 10
+                );
+                return;
+            }
+            const cycle: Equipment[] = ['none', ...owned];
             const current = characterManager.getEquipment();
-            const next: Equipment = current === 'none' ? 'boat' : (current === 'boat' ? 'wing' : 'none');
+            const next = cycle[(cycle.indexOf(current) + 1) % cycle.length] ?? 'none';
             characterManager.setEquipment(next);
             this.session?.sendEquip(next);
             this.updateEquipmentUI();
@@ -249,15 +259,6 @@ export class LevelSelect {
             else if (key === 'd' || key === 'l' || e.key === 'ArrowRight') { dx = 1; newDir = 'right'; }
             else if (e.key === 'Enter') {
                 this.tryEnterLevel(this.catX, this.catY);
-                return;
-            } else if (key === 'p') {
-                if (this.session && this.onMpLevelSelect) {
-                    const ref: LevelRef = { kind: 'special', id: 'special_hard_1' };
-                    this.session.sendEnter(this.catX, this.catY);
-                    this.onMpLevelSelect(ref, { x: this.catX, y: this.catY });
-                } else {
-                    this.onLevelSelect(-1, undefined, undefined, 'special_hard_1', { x: this.catX, y: this.catY });
-                }
                 return;
             }
 
@@ -747,6 +748,11 @@ export class LevelSelect {
                     setTimeout(() => {
                         worldManager.openChest();
                         this.session?.sendWorldUpdate({ t: 'chestOpened' });
+                        if (characterManager.grantEquipment('boat')) {
+                            const rewardX = this.anchorX + chestX * this.nodeWidth + this.nodeWidth / 2;
+                            const rewardY = this.anchorY + chestY * this.nodeWidth - 10;
+                            this.showMessage('获得小船！', rewardX, rewardY);
+                        }
                         this.isChestOpening = false;
                         this.draw();
                     }, 500);

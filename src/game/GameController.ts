@@ -859,6 +859,11 @@ export class GameController {
         const fishHtml = fishReward > 0
             ? `<div class="win-fish">+${fishReward} <img src="/assets/images/fish.png" alt="小鱼干"></div>`
             : '';
+        // First clear of a lake-island special level awards the wing.
+        const wingReward = this.isSpecialLevel && !characterManager.ownsEquipment('wing');
+        const equipHtml = wingReward
+            ? `<div class="win-equip">获得翅膀 <img src="/assets/images/wing.png" alt="翅膀"></div>`
+            : '';
         const overlay = document.createElement('div');
         this.currentOverlay = overlay;
         overlay.className = 'win-overlay';
@@ -868,6 +873,7 @@ export class GameController {
                 <div class="win-text">完成</div>
                 <div class="win-stars">${starText}</div>
                 ${fishHtml}
+                ${equipHtml}
                 <div class="win-line"></div>
             </div>
         `;
@@ -909,6 +915,9 @@ export class GameController {
                             x: this.generatedLevelMeta.worldX,
                             y: this.generatedLevelMeta.worldY
                         });
+                    } else if (this.isSpecialLevel) {
+                        // Settled locally by every client in the level (idempotent).
+                        characterManager.grantEquipment('wing');
                     }
                     callback();
                 }
